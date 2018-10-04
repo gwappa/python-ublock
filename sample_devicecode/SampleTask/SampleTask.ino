@@ -290,10 +290,10 @@ void writeResults(const bool& cued, const bool& resp, const long& wait, const in
     }
   }
 
-  Serial.print("wait=");
+  Serial.print("wait");
   Serial.print(wait);
 
-  Serial.print(";lick=[");
+  Serial.print(";lick[");
   for (int i=0; i<nresp; i++) {
     Serial.print(response[i]);
     if (i < (nresp-1) ) {

@@ -303,3 +303,25 @@ class loop:
         self.update.notify_all()
         self.update.release()
 
+def testResult(status_set, returns='result'):
+    """generates an evaluator that tests if the returned status
+    starts with one of the word in `status_set`.
+
+    intended for the use with `loophandler.evaluate()`.
+    """
+    if returns.lower() == 'result':
+        header = protocol.RESULT
+    elif returns.lower() == 'config':
+        header = protocol.CONFIG
+    else:
+        raise ValueError("'returns' currently only accepts 'result' or 'config'")
+
+    def __evaluator(msg):
+        if protocol.DELIMITER in msg:
+            msg = msg[:(msg.index(protocol.DELIMITER))]
+        if msg[0] == header:
+            msg = msg[1:]
+        return (msg in status_set)
+    return __evaluator
+
+

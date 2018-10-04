@@ -39,9 +39,12 @@ class Config(Command):
 class Action(Command):
     """a class that represents the task action."""
 
-    def __init__(self, name, command, label=None, desc=None, repeats=True):
+    def __init__(self, name, command, label=None, desc=None,
+                 repeats=True, returns='result', criteria=None):
         super().__init__(name, command, label=label, desc=desc)
+        self.returns = returns
         self.repeats = bool(repeats)
+        self.criteria = None
 
 class Logger:
     def __init__(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
@@ -64,7 +67,7 @@ class Result:
 
 class ResultPlot:
     """a base configuration class for plotting results"""
-    def __init__(self, colormappings, markersize=5):
+    def __init__(self, colormappings, markersize=8):
         """
         colormappings: (value, color) dictionary,
         with 'value' being one of status/values/arrays in the result message.
@@ -75,7 +78,7 @@ class ResultPlot:
 class StatusPlot(ResultPlot):
     """configuration used to generate plots for result status"""
 
-    def __init__(self, colormappings, markersize=5, align='origin'):
+    def __init__(self, colormappings, markersize=8, align='origin'):
         """colormappings: (status, color) dictionary
         align: currently only allows 'origin'
         """
@@ -85,7 +88,7 @@ class StatusPlot(ResultPlot):
 class ArrayPlot(ResultPlot):
     """configuration used to generate plots for array-type results"""
 
-    def __init__(self, colormappings, markersize=5):
+    def __init__(self, colormappings, markersize=8):
         """colormappings: (arrayname, color) dictionary"""
         super().__init__(colormappings, markersize=markersize)
 
@@ -94,8 +97,8 @@ class Task:
     it does not do anything per se, but it helps generate the UI
     through e.g. ublock.app.fromTask(task) or ublock.tty.fromTask(task).
     """
-    available_features = ('raw', 'note', 'echo')
-    available_views    = ('stats', 'session')
+    available_features = ('control', 'raw', 'note', 'echo')
+    available_views    = ('stats', 'session', 'histogram')
 
     def __init__(self, name):
         """name: the name of this task"""
@@ -119,9 +122,11 @@ class Task:
                                     desc=desc, group=group,
                                     defaultvalue=defaultvalue)
 
-    def addAction(self, name, command, label=None, desc=None, repeats=True):
+    def addAction(self, name, command, label=None, desc=None,
+                  returns='result', repeats=True, criteria=None):
         self.actions[name] = Action(name, command, label=label,
-                                    desc=desc, repeats=repeats)
+                                    desc=desc, repeats=repeats,
+                                    returns=returns, criteria=None)
 
     def setResult(self, status=(), values=(), arrays=()):
         self.result = Result(status, values, arrays)

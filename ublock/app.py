@@ -8,6 +8,7 @@ except ImportError:
 import os
 from datetime import datetime
 from collections import OrderedDict
+from traceback import print_exc
 from serial.tools import list_ports
 
 from .core import client, protocol, eventhandler, loop, loophandler
@@ -15,9 +16,13 @@ from .model import StatusPlot, ArrayPlot
 
 mainapp = QtGui.QApplication([])
 
+# used only for debugging via the console
+# to be removed some time in the future
+debug = False
+
 class SerialIO(QtWidgets.QWidget, eventhandler):
     """GUI widget for managing a serial connection.
-    
+
     This class implements `eventhandler`, and converts
     the handler methods to Qt signals.
 
@@ -33,7 +38,7 @@ class SerialIO(QtWidgets.QWidget, eventhandler):
     The SerialIO class is designed so that the user has the
     control over selecting/opening/closing the serial port.
     The classes that communicates over the serial port
-    are supposed to `connect` their slots with SerialIO's 
+    are supposed to `connect` their slots with SerialIO's
     `xxxReceived` signal(s), and by calling SerialIO's
     `request(line)` method (which is inherited from `baseclient`).
     """
@@ -52,7 +57,7 @@ class SerialIO(QtWidgets.QWidget, eventhandler):
     outputMessageReceived   = QtCore.pyqtSignal(str)
     rawMessageReceived      = QtCore.pyqtSignal(str)
 
-    def __init__(self, serialclient=client.Leonardo, handler=None, 
+    def __init__(self, serialclient=client.Leonardo, handler=None,
                  label="Port: ", acqByResp=True, parent=None, **kwargs):
         super(QtWidgets.QWidget, self).__init__(parent=parent)
         super(eventhandler, self).__init__()
@@ -121,7 +126,8 @@ class SerialIO(QtWidgets.QWidget, eventhandler):
 
     @QtCore.pyqtSlot(int)
     def updateSelection(self, idx):
-        print(f"selected: {idx}")
+        if debug == True:
+            print(f"selected: {idx}")
         if idx > len(self.ports):
             # re-enumerate command
             self.enumeratePorts()
@@ -230,7 +236,7 @@ class LineConfigUI(QtCore.QObject):
 
     def setSerialIO(self, serial, output=True):
         """connects this configUI to a SerialIO.
-        
+
         output: whether or not to connect update events to SerialIO.
         """
         if output == True:
@@ -246,7 +252,11 @@ class LineConfigUI(QtCore.QObject):
             self.editor.setText(msg[len(self.command):])
 
 class ModeConfigUI(QtWidgets.QComboBox):
+    # emitted when the user changed the selection
     configValueChanged = QtCore.pyqtSignal(str)
+
+    # emitted when SerialIO returns a mode selection
+    currentModeChanged = QtCore.pyqtSignal(str)
 
     def __init__(self, options, parent=None):
         """options -- {modestr: modecmd} dict"""
@@ -256,7 +266,7 @@ class ModeConfigUI(QtWidgets.QComboBox):
 
     def setSerialIO(self, serial, output=True):
         """connects this configUI to a SerialIO.
-        
+
         output: whether or not to connect update events to SerialIO.
         """
         if output == True:
@@ -274,7 +284,7 @@ class ModeConfigUI(QtWidgets.QComboBox):
         self.currentIndexChanged.connect(self.updateWithSelection)
         # wait for the config to be loaded first
         # through from the serial port
-        self.valueChanging = True 
+        self.valueChanging = True
 
     @QtCore.pyqtSlot(int)
     def updateWithSelection(self, idx):
@@ -289,6 +299,7 @@ class ModeConfigUI(QtWidgets.QComboBox):
             idx = msg.index(']') - 2
             # print("mode config: {} (index={})".format(msg, idx))
             self.setCurrentIndex(idx)
+            self.currentModeChanged.emit(self.currentText())
             self.prevIndex = idx
             self.valueChanging = False
 
@@ -331,21 +342,37 @@ class ActionUI(QtWidgets.QPushButton):
     """the GUI class for managing an action (that does not accept any repeats)"""
     activated = QtCore.pyqtSignal(str)
 
-    def __init__(self, label, command, parent=None):
+    def __init__(self, label, command, returns='result', criteria=None, parent=None):
         QtWidgets.QPushButton.__init__(self, label, parent=parent)
         self.command = command
+        if not returns in ('result', 'config'):
+            print("*unknown return type for {}: {}".format(label, returns))
+            returns = None
+        self.returns = returns
+        if criteria is not None:
+            if callable(criteria):
+                self.evaluate = criteria
+            else:
+                print(f"***criteria '{criteria}' is not callable and hence disabled. try using ublock.testResult()", flush=True)
+
         self.label = label
         self.waiting = False
         self.clicked.connect(self.dispatchCommand)
+        self.setEnabled(False)
 
     def setSerialIO(self, serial, output=True):
         """connects this ActionUI to a SerialIO.
-        
+
         output: whether or not to connect update events to SerialIO.
         """
         if output == True:
             self.activated.connect(serial.request)
-        serial.resultMessageReceived.connect(self.checkResults)
+        if self.returns is not None:
+            if self.returns == 'result':
+                serial.resultMessageReceived.connect(self.checkResults)
+            elif self.returns == 'config':
+                serial.configMessageReceived.connect(self.checkResults)
+        serial.serialStatusChanged.connect(self.setEnabled)
 
     def dispatchCommand(self):
         self.activated.emit(self.command)
@@ -353,9 +380,13 @@ class ActionUI(QtWidgets.QPushButton):
         self.setEnabled(False)
 
     def checkResults(self, msg):
-        if self.waiting == True:
-            self.waiting = False
-            self.setEnabled(True)
+        if self.evaluate(msg) == True:
+            if self.waiting == True:
+                self.waiting = False
+                self.setEnabled(True)
+
+    def evaluate(self, result):
+        return True
 
 class RepeatUI(QtWidgets.QWidget, loophandler):
     """the GUI class for managing repeat number"""
@@ -363,11 +394,22 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
     repeatStarting      = QtCore.pyqtSignal(str, int, int)
     repeatEnding        = QtCore.pyqtSignal(str, int, int)
 
-    def __init__(self, label, command, header='Repeat', parent=None, interval=0):
+    def __init__(self, label, command, header='Repeat',
+                 returns='result', criteria=None, parent=None, interval=0):
         QtWidgets.QWidget.__init__(self, parent=parent)
         loophandler.__init__(self)
         self.loop       = loop(command, 1, io=self, interval=interval, handler=self)
         self.loopthread = None
+
+        if not returns in ('result', 'config'):
+            print("*unknown return type for {}: {}".format(label, returns))
+            returns = None
+        self.returns = returns
+        if criteria is not None:
+            if callable(criteria):
+                self.evaluate = criteria
+            else:
+                print(f"***criteria '{criteria}' is not callable and hence disabled. try using ublock.testResult()", flush=True)
 
         self.header  = QtWidgets.QLabel(header)
         self.editor  = QtWidgets.QLineEdit()
@@ -382,20 +424,26 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
         self.control.addWidget(self.header)
         self.control.addWidget(self.editor)
         self.control.addWidget(self.button)
-        self.layout  = QtWidgets.QVBoxLayout()
-        self.layout.addWidget(self.status)
-        self.layout.addLayout(self.control)
+        self.layout  = QtWidgets.QGridLayout()
+        self.layout.addWidget(self.status,0,0)
+        self.layout.addLayout(self.control,0,1)
+        self.layout.setColumnStretch(0,2)
+        self.layout.setColumnStretch(1,5)
         self.setLayout(self.layout)
         self.setEnabled(False)
         # TODO need a mechanism to allow action group
 
     def setSerialIO(self, serial, output=True):
         """connects this configUI to a SerialIO.
-        
+
         output: whether or not to connect update events to SerialIO.
         """
         serial.serialStatusChanged.connect(self.setEnabled)
-        serial.resultMessageReceived.connect(self.updateWithMessage)
+        if self.returns is not None:
+            if self.returns == 'result':
+                serial.resultMessageReceived.connect(self.updateWithMessage)
+            elif self.returns == 'config':
+                serial.configMessageReceived.connect(self.updateWithMessage)
         if output == True:
             self.dispatchingRequest.connect(serial.request)
 
@@ -439,7 +487,7 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
     def request(self, line):
         self.dispatchingRequest.emit(line)
 
-    def evaluate(self, result):
+    def evaluate(self, line):
         return True
 
     def starting(self, cmd, num, idx):
@@ -491,7 +539,7 @@ class RawCommandUI(QtWidgets.QWidget):
 class ResultParser(QtCore.QObject):
     """helps parsing the result messages.
     you can initialize with:
-    
+
     + status -- str-only token
     + value  -- (str, int) token
     + array  -- (str, [int]) token
@@ -516,33 +564,45 @@ class ResultParser(QtCore.QObject):
 
     def __parseSingleResult(self, token):
         token = token.strip()
+        if debug == True:
+            print(f"token({token})")
         for s in self.status:
+            if debug == True:
+                print(f"testing status: {s}...")
             if token == s:
                 self.resultStatusReceived.emit(s)
                 return
         for val in self.values:
+            if debug == True:
+                print(f"testing value: {val}...")
             try:
                 if token.startswith(val):
-                    arg = int(token[len(val)+1:]) # account for the '+' char
+                    arg = int(token[len(val):])
                     self.resultValueReceived.emit(val, arg)
                     return
             except ValueError:
-                print("***error while parsing for '{}': {}".format(val, token))
+                print_exc()
+                print("***error while parsing value '{}': {}".format(val, token))
                 return
         for arr in self.arrays:
+            if debug == True:
+                print(f"testing array: {arr}...")
             try:
                 if token.startswith(arr):
-                    arg = token[len(arr)+1:] # account for the '+' char
+                    arg = token[len(arr):]
                     if (arg[0] != '[') or (arg[-1] != ']'):
                         continue
                     args = arg[1:-1].split(',')
                     arglist = []
                     for elem in args:
+                        if len(elem.strip()) == 0:
+                            continue
                         arglist.append(int(elem))
                     self.resultArrayReceived.emit(arr, arglist)
                     return
             except ValueError:
-                print("***error while parsing for '{}': {}".format(val, arg))
+                print_exc()
+                print("***error while parsing array '{}': {}".format(arr, arg))
                 return
         # no match
         self.unknownResultReceived.emit(token)
@@ -551,12 +611,12 @@ class ResultParser(QtCore.QObject):
         self.beginParsing.emit()
         tokens = line[1:].split(protocol.DELIMITER)
         for token in tokens:
-            self.__parseSingleResult(token) 
+            self.__parseSingleResult(token)
         self.endParsing.emit()
 
 class ResultStatsView(QtWidgets.QGroupBox):
     """a display widget for summarizing the result status"""
-    
+
     def __init__(self, summarized=(), rewarded=(), parent=None):
         """summarized: the status messages that are to be counted,
         rewarded: the status messages that are to be counted as 'rewarded'."""
@@ -612,6 +672,7 @@ class SessionView(pg.PlotWidget):
     def __init__(self, parent=None, xwidth=None, **kwargs):
         super().__init__(parent=parent, background='w', **kwargs)
         self.enableAutoRange(pg.ViewBox.YAxis)
+        self.getPlotItem().invertY(True)
         if xwidth is not None:
             self.xwidth = xwidth
         self.plotters = []
@@ -632,8 +693,15 @@ class SessionView(pg.PlotWidget):
         self.plotters.append(item)
         item.setView(self)
 
-    def clear(self):
-        pg.PlotWidget.clear(self)
+    def clearPlots(self):
+        if debug == True:
+            print("SessionView: clearPlots")
+        # to force-repaint the plots,
+        # we first `clear` the plot items
+        # and then urge the items to add themselves again
+        # using the `refreshing` signal
+        self.getPlotItem().clear()
+        self.index = 0
         self.refreshing.emit(self)
 
     def initPlotting(self):
@@ -662,9 +730,9 @@ class StatusPlotItem(pg.ScatterPlotItem):
         align: currently only allows 'origin'
         """
         pg.ScatterPlotItem.__init__(self, parent=parent)
-        self.markersize     = markersize
         self.penmapping     = {}
         self.brushmapping   = {}
+        self.setSize(markersize)
         for status, value in colormappings.items():
             self.penmapping[status]     = pg.mkPen(color=value)
             self.brushmapping[status]   = pg.mkBrush(color=value)
@@ -677,10 +745,14 @@ class StatusPlotItem(pg.ScatterPlotItem):
         self.acceptStatus.connect(view.scheduleFurtherPlotting)
 
     def clearWithView(self, view):
+        if debug == True:
+            print(f"StatusPlotItem: clear")
         self.clear()
         view.addItem(self)
 
     def addResultStatus(self, index, status):
+        if debug == True:
+            print(f"addResultStatus({index}, {status})")
         if status in self.penmapping.keys():
             self.addPoints(x=(0,), y=(index,),
                            pen=self.penmapping[status],
@@ -689,16 +761,16 @@ class StatusPlotItem(pg.ScatterPlotItem):
 
 class ArrayPlotItem(QtCore.QObject):
     """the class used for plotting result array items"""
-    
+
     def __init__(self, colormappings, markersize=5, parent=None):
         """colormappings: (name, color) dictionary"""
         QtCore.QObject.__init__(self, parent=parent)
-        self.markersize     = markersize
         self.plotters       = {}
         for name, value in colormappings.items():
             plotter = pg.ScatterPlotItem()
             plotter.setPen(pg.mkPen(color=value))
             plotter.setBrush(pg.mkBrush(color=value))
+            plotter.setSize(markersize)
             self.plotters[name] = plotter
 
     def setView(self, view):
@@ -709,11 +781,15 @@ class ArrayPlotItem(QtCore.QObject):
         view.refreshing.connect(self.clearWithView)
 
     def clearWithView(self, view):
+        if debug == True:
+            print(f"ArrayPlotItem: clear")
         for plotter in self.plotters.values():
             plotter.clear()
             view.addItem(plotter)
 
     def addResultArray(self, index, name, values):
+        if debug == True:
+            print(f"addResultArray({index}, {name})")
         if name in self.plotters.keys():
             self.plotters[name].addPoints(x=values, y=(index,)*len(values))
 
@@ -727,7 +803,7 @@ class LoggerUI(QtWidgets.QGroupBox):
         """used for sharing the log file."""
         if name not in cls.loggers.keys():
             cls.loggers[name] = cls(name, label=label, fmt=fmt)
-        return cls.loggers[name] 
+        return cls.loggers[name]
 
     @classmethod
     def echo(cls, line):
@@ -743,7 +819,7 @@ class LoggerUI(QtWidgets.QGroupBox):
         self.baseformat = fmt.format(self.name)
         self.logfile    = None
         self.fileinfo   = None
-        self.label      = QtWidgets.QLabel("Format: ")      
+        self.label      = QtWidgets.QLabel("Format: ")
         self.field      = QtWidgets.QLineEdit(self.baseformat)
         self.button     = QtWidgets.QPushButton("New")
         self.hbox       = QtWidgets.QHBoxLayout()
@@ -773,7 +849,7 @@ class LoggerUI(QtWidgets.QGroupBox):
         does nothing if there is no open file."""
         if self.logfile is not None:
             self.logfile.close()
-            self.statusChanged.emit("{}closed: {}".format(protocol.OUTPUT, self.fileinfo))
+            LoggerUI.printStatus("{}closed: {}".format(protocol.OUTPUT, self.fileinfo))
             self.logfile = None
             self.fileinfo = None
 
@@ -826,10 +902,17 @@ class TaskWidget(QtWidgets.QWidget):
     views       = None
     features    = None
 
+    clearPlot   = None
+    quitApp     = None
+
     def __init__(self, name="task", parent=None):
         QtWidgets.QWidget.__init__(self, parent=parent)
         self.name = name
         self.status = QtWidgets.QLabel()
+        self.quitPrompt = QtWidgets.QMessageBox(self)
+        self.quitPrompt.setIcon(QtWidgets.QMessageBox.Warning)
+        self.quitPrompt.setText("Are you sure you want to quit?")
+        
 
     def updateStatus(self, line):
         """updates the status in response to the line."""
@@ -839,7 +922,17 @@ class TaskWidget(QtWidgets.QWidget):
             line = line[:limit] + "..."
         self.status.setText(line)
 
-    def layout(self):
+    def promptQuit(self):
+        """ask user whether or not to quit the app."""
+        ret = QtWidgets.QMessageBox.warning(self,
+                                            "About to quit",
+                                            "Are you sure you want to quit?",
+                                            QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Yes,
+                                            QtWidgets.QMessageBox.Yes)
+        if ret == QtWidgets.QMessageBox.Yes:
+            mainapp.quit()
+
+    def __layout(self):
         """lays out its components in a new QVBoxLayout."""
         layout = QtWidgets.QVBoxLayout()
         isempty = True
@@ -940,13 +1033,22 @@ class TaskWidget(QtWidgets.QWidget):
                 box.setLayout(boxLayout)
                 layout.addWidget(box)
 
-        surrounding = QtWidgets.QHBoxLayout()
-        surrounding.addLayout(layout, 1)
-        self.setLayout(surrounding)
-
+        surrounding = QtWidgets.QGridLayout()
+        surrounding.addLayout(layout, 0, 0)
+        ncol = 1
+        
         # add sessionview (if any)
         if (self.result is not None) and ('session' in self.views.keys()):
-            surrounding.addWidget(self.views['session'], 2)
+            ncol = 2
+            if self.clearPlot is not None:
+                self.clearPlot.setEnabled(True)
+                self.clearPlot.clicked.connect(self.views['session'].clearPlots)
+            surrounding.addWidget(self.views['session'], 0, 1)
+            surrounding.setColumnStretch(1, 2)
+
+        if 'control' in self.features.keys():
+            surrounding.addLayout(self.features['control'], 1, 0, 1, 2)
+        self.setLayout(surrounding)
 
     @staticmethod
     def fromTask(model, serialclient='leonardo', baud=9600):
@@ -979,9 +1081,22 @@ class TaskWidget(QtWidgets.QWidget):
             widget.features['raw'].setEnabled(False)
             widget.features['raw'].setSerialIO(widget.serial, output=True)
 
+        # set "control" feature
+        widget.clearPlot = QtWidgets.QPushButton("Clear plots")
+        widget.clearPlot.setEnabled(False)
+        widget.quitApp   = QtWidgets.QPushButton("Quit")
+        widget.quitApp.clicked.connect(widget.promptQuit)
+        if 'control' in model.features:
+            controlbox     = QtWidgets.QHBoxLayout()
+            controlbox.addStretch()
+            controlbox.addWidget(widget.clearPlot)
+            controlbox.addWidget(widget.quitApp)
+            widget.features['control'] = controlbox
+
         # add ModeConfigUI
-        widget.modes    = ModeConfigUI(model.modes) 
-        widget.modes.setSerialIO(widget.serial, output=True)
+        if len(model.modes) > 0:
+            widget.modes    = ModeConfigUI(model.modes)
+            widget.modes.setSerialIO(widget.serial, output=True)
 
         # add LineConfigUI's
         widget.configs  = OrderedDict()
@@ -996,13 +1111,14 @@ class TaskWidget(QtWidgets.QWidget):
         widget.actions  = OrderedDict()
         for name, action in model.actions.items():
             uitype = RepeatUI if action.repeats == True else ActionUI
-            uiobj = uitype(action.label, action.command)
+            uiobj = uitype(action.label, action.command, returns=action.returns,
+                            criteria=action.criteria)
             uiobj.setSerialIO(widget.serial, output=True)
             widget.actions[name] = uiobj
 
         # add ResultParser
         if model.result is not None:
-            widget.result   = ResultParser(**model.result.as_dict())
+            widget.result   = ResultParser(**(model.result.as_dict()))
             widget.result.setSerialIO(widget.serial)
             widget.views    = OrderedDict()
 
@@ -1028,10 +1144,10 @@ class TaskWidget(QtWidgets.QWidget):
                         print("***unknown plotter type: {}".format(type(item)))
                 view.setResultParser(widget.result)
                 widget.views['session'] = view
-                        
+
         else:
             widget.result = None
-        
+
         # add loggerUI
         widget.loggers  = OrderedDict()
         for name, logger in model.loggers.items():
@@ -1041,16 +1157,7 @@ class TaskWidget(QtWidgets.QWidget):
                 uiobj.attachNoteUI(widget.features['note'])
             widget.loggers[name] = uiobj
 
-        widget.layout()
+        widget.__layout()
         return widget
 
 fromTask = TaskWidget.fromTask
-
-
-
-
-
-
-
-
-
