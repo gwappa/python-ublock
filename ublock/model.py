@@ -40,11 +40,13 @@ class Action(Command):
     """a class that represents the task action."""
 
     def __init__(self, name, command, label=None, desc=None,
-                 repeats=True, returns='result', criteria=None):
+                 repeats=True, returns='result', criteria=None,
+                 strict=None):
         super().__init__(name, command, label=label, desc=desc)
-        self.returns = returns
-        self.repeats = bool(repeats)
-        self.criteria = None
+        self.returns    = returns
+        self.repeats    = bool(repeats)
+        self.criteria   = criteria
+        self.strict     = strict
 
 class Logger:
     def __init__(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
@@ -123,10 +125,10 @@ class Task:
                                     defaultvalue=defaultvalue)
 
     def addAction(self, name, command, label=None, desc=None,
-                  returns='result', repeats=True, criteria=None):
+                  returns='result', repeats=True, criteria=None, strict=None):
         self.actions[name] = Action(name, command, label=label,
                                     desc=desc, repeats=repeats,
-                                    returns=returns, criteria=None)
+                                    returns=returns, criteria=criteria, strict=strict)
 
     def setResult(self, status=(), values=(), arrays=()):
         self.result = Result(status, values, arrays)

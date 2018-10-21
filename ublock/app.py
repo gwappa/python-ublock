@@ -342,7 +342,9 @@ class ActionUI(QtWidgets.QPushButton):
     """the GUI class for managing an action (that does not accept any repeats)"""
     activated = QtCore.pyqtSignal(str)
 
-    def __init__(self, label, command, returns='result', criteria=None, parent=None):
+    def __init__(self, label, command, returns='result', criteria=None,
+                strict=None, parent=None):
+        """currently `strict` has no effect"""
         QtWidgets.QPushButton.__init__(self, label, parent=parent)
         self.command = command
         if not returns in ('result', 'config'):
@@ -395,7 +397,8 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
     repeatEnding        = QtCore.pyqtSignal(str, int, int)
 
     def __init__(self, label, command, header='Repeat',
-                 returns='result', criteria=None, parent=None, interval=0):
+                 returns='result', criteria=None, strict=None,
+                 parent=None, interval=0):
         QtWidgets.QWidget.__init__(self, parent=parent)
         loophandler.__init__(self)
         self.loop       = loop(command, 1, io=self, interval=interval, handler=self)
@@ -405,6 +408,7 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
             print("*unknown return type for {}: {}".format(label, returns))
             returns = None
         self.returns = returns
+        self.strict = strict
         if criteria is not None:
             if callable(criteria):
                 self.evaluate = criteria
@@ -419,6 +423,13 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
         self.button.clicked.connect(self.runRepeat)
         self.buttonLabel = self.button.text()
         self.status  = QtWidgets.QLabel()
+        if self.strict is not None:
+            self.strictcheck = QtWidgets.QCheckBox(f"Use strict mode for \"{label}\"")
+            self.strictcheck.setChecked(False)
+            self.strictmode  = False
+            self.strictcheck.toggled.connect(self.setStrictMode)
+        else:
+            self.strictmode = None
 
         self.control = QtWidgets.QHBoxLayout()
         self.control.addWidget(self.header)
@@ -427,11 +438,17 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
         self.layout  = QtWidgets.QGridLayout()
         self.layout.addWidget(self.status,0,0)
         self.layout.addLayout(self.control,0,1)
+        if self.strictmode is not None:
+            self.layout.addWidget(self.strictcheck, 1,1,
+                                    alignment=QtCore.Qt.AlignRight)
         self.layout.setColumnStretch(0,2)
         self.layout.setColumnStretch(1,5)
         self.setLayout(self.layout)
         self.setEnabled(False)
         # TODO need a mechanism to allow action group
+
+    def setStrictMode(self, val):
+        self.strictmode = val
 
     def setSerialIO(self, serial, output=True):
         """connects this configUI to a SerialIO.
@@ -459,6 +476,8 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
         self.button.setEnabled(value)
         self.editor.setEnabled(value)
         self.status.setEnabled(value)
+        if self.strict is not None:
+            self.strictcheck.setEnabled(value)
         if self.loopthread is None:
             self.status.setText("")
 
@@ -487,8 +506,11 @@ class RepeatUI(QtWidgets.QWidget, loophandler):
     def request(self, line):
         self.dispatchingRequest.emit(line)
 
-    def evaluate(self, line):
-        return True
+    def evaluate(self, resultline):
+        if self.strictmode == True:
+            return any(resultline[1:].startswith(status) for status in self.strict)
+        else:
+            return True
 
     def starting(self, cmd, num, idx):
         self.button.setText("Abort")
@@ -535,6 +557,7 @@ class RawCommandUI(QtWidgets.QWidget):
         line = self.editor.text().strip()
         if len(line) > 0:
             self.dispatchingRequest.emit(line)
+        self.editor.setText("")
 
 class ResultParser(QtCore.QObject):
     """helps parsing the result messages.
@@ -1112,7 +1135,7 @@ class TaskWidget(QtWidgets.QWidget):
         for name, action in model.actions.items():
             uitype = RepeatUI if action.repeats == True else ActionUI
             uiobj = uitype(action.label, action.command, returns=action.returns,
-                            criteria=action.criteria)
+                            criteria=action.criteria, strict=action.strict)
             uiobj.setSerialIO(widget.serial, output=True)
             widget.actions[name] = uiobj
 
