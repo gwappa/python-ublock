@@ -53,13 +53,16 @@ class Result:
     to store the model of result messages.
     """
 
-    def __init__(self, status=(), values=(), arrays=()):
+    def __init__(self, status=(), values=(), arrays=(),
+                plotted=dict(), counted=(), rewarded=()):
         self.status     = list(status)
         self.values     = list(values)
         self.arrays     = list(arrays)
         self.plotted    = OrderedDict()
-        self.counted    = []
-        self.rewarded   = []
+        for name, kwargs in plotted:
+            self.plot(name, **kwargs)
+        self.counted    = list(counted)
+        self.rewarded   = list(rewarded)
 
     def plot(self, item, **kwargs):
         if not isinstance(item, str):
@@ -175,47 +178,53 @@ class Task:
                     rawcommand=False,
                     note=True):
         """name: the name of this task"""
-        self.name           = name
-        self.modes          = OrderedDict()
-        self.configs        = OrderedDict()
-        self.actions        = OrderedDict()
-        self.loggers        = OrderedDict()
-        self.result         = None
-        self.features       = []
-        self.views          = {}
+        self.name       = name
+        self.modes      = OrderedDict()
+        self.configs    = OrderedDict()
+        self.actions    = OrderedDict()
+        self.loggers    = OrderedDict()
 
-    def addMode(self, name, command, label=None, desc=None,
-                defaultindex=0):
-        self.modes[name] = Mode(name, command, label=label, desc=desc,
-                                defaultindex=defaultindex)
+        self.result     = None
+        self.controls   = controls
+        self.echoed     = echoed
+        self.rawcommand = rawcommand
+        self.note       = note
 
-    def addConfig(self, name, command, label=None, desc=None, group=None,
-                  defaultvalue=0):
-        self.configs[name] = Config(name, command, label=label,
-                                    desc=desc, group=group,
-                                    defaultvalue=defaultvalue)
+    def add(self, item):
+        return self
 
-    def addAction(self, name, command, label=None, desc=None,
-                  returns='result', repeats=True, criteria=None, strict=None):
-        self.actions[name] = Action(name, command, label=label,
-                                    desc=desc, repeats=repeats,
-                                    returns=returns, criteria=criteria, strict=strict)
-
-    def setResult(self, status=(), values=(), arrays=()):
-        self.result = Result(status, values, arrays)
-
-    def addLogger(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
-        self.loggers[name] = Logger(name, label=label, fmt=fmt)
-
-    def addFeatures(self, *features):
-        """current set of features: see Task.available_features"""
-        for feature in features:
-            feature = feature.strip()
-            if feature in self.available_features:
-                self.features.append(feature)
-
-    def addView(self, name, **configs):
-        """adds a result view with the type 'name' to this model.
-        contents of 'configs' vary according to the view type."""
-        if name in self.available_views:
-            self.views[name] = configs
+    # def addMode(self, name, command, label=None, desc=None,
+    #             defaultindex=0):
+    #     self.modes[name] = Mode(name, command, label=label, desc=desc,
+    #                             defaultindex=defaultindex)
+    #
+    # def addConfig(self, name, command, label=None, desc=None, group=None,
+    #               defaultvalue=0):
+    #     self.configs[name] = Config(name, command, label=label,
+    #                                 desc=desc, group=group,
+    #                                 defaultvalue=defaultvalue)
+    #
+    # def addAction(self, name, command, label=None, desc=None,
+    #               returns='result', repeats=True, criteria=None, strict=None):
+    #     self.actions[name] = Action(name, command, label=label,
+    #                                 desc=desc, repeats=repeats,
+    #                                 returns=returns, criteria=criteria, strict=strict)
+    #
+    # def setResult(self, status=(), values=(), arrays=()):
+    #     self.result = Result(status, values, arrays)
+    #
+    # def addLogger(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
+    #     self.loggers[name] = Logger(name, label=label, fmt=fmt)
+    #
+    # def addFeatures(self, *features):
+    #     """current set of features: see Task.available_features"""
+    #     for feature in features:
+    #         feature = feature.strip()
+    #         if feature in self.available_features:
+    #             self.features.append(feature)
+    #
+    # def addView(self, name, **configs):
+    #     """adds a result view with the type 'name' to this model.
+    #     contents of 'configs' vary according to the view type."""
+    #     if name in self.available_views:
+    #         self.views[name] = configs

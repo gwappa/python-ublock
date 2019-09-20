@@ -84,8 +84,6 @@ class NoteUI(QtWidgets.QGroupBox):
             self.runningNoteAdded.emit(protocol.DEBUG + content)
             self.editor.setText("")
 
-## TODO: control
-
 class ControlUI(QtWidgets.QWidget):
     quitRequested  = QtCore.pyqtSignal()
     clearRequested = QtCore.pyqtSignal()

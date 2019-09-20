@@ -11,7 +11,15 @@ from collections import OrderedDict
 from traceback import print_exc
 from eventcalls.io import SerialIO as SerialTerm
 
-from .model import StatusPlot, ArrayPlot
+# from .model import StatusPlot, ArrayPlot
+
+from .actions  import ActionUI
+from .configs  import ConfigUI
+from .features import RawCommandUI, NoteUI, ControlUI
+from .modes    import ModeUI
+from .plots    import SessionView
+from .results  import ResultParser, ResultStatsUI
+from .serial   import SerialIO
 
 __mainapp = None
 
@@ -343,88 +351,21 @@ class TaskWidget(QtWidgets.QWidget):
 
         def __add(obj, separate=False):
             if obj is None:
-                return False
+                return
             if (separate == True) and (not self.__isempty):
                 layout.addWidget(HorizontalSeparator())
             layout.addWidget(obj)
             self.__isempty = False
-            return True
 
-        # add SerialIO
-        __add(self._serialUI)
-
-        # add status bar
-        __add(self.status)
-
-        # add raw command UI (if any)
-        __add(self._rawCommandUI)
-
-        # add ModeConfigUI
-        # if self.modes is not None:
-        #     if isempty == False:
-        #         layout.addWidget(HorizontalSeparator())
-        #     modeLayout = QtWidgets.QHBoxLayout()
-        #     modeHeader = QtWidgets.QLabel("Mode: ")
-        #     modeHeader.setEnabled(False)
-        #     self.serial.serialStatusChanged.connect(modeHeader.setEnabled)
-        #     modeLayout.addWidget(modeHeader)
-        #     modeLayout.addWidget(self.modes)
-        #     layout.addLayout(modeLayout)
-        __add(self._modeUI, separate=True)
-
-        # add LineConfigUI's
-        # if len(self.configs) == 0:
-        #     pass
-        # elif len(self.configs) == 1:
-        #     if isempty == False:
-        #         layout.addWidget(HorizontalSeparator())
-        #     isempty = False
-        #     configLayout = QtWidgets.QFormLayout()
-        #     for group in self.configs.values():
-        #         for config in group.values():
-        #             configLayout.addRow(config.label, config.editor)
-        #     layout.addLayout(configLayout)
-        # else:
-        #     if isempty == False:
-        #         layout.addWidget(HorizontalSeparator())
-        #     isempty = False
-        #     configWidget = QtWidgets.QTabWidget()
-        #     for groupname in self.configs.keys():
-        #         page = QtWidgets.QWidget()
-        #         pageLayout = QtWidgets.QFormLayout()
-        #         for config in self.configs[groupname].values():
-        #             pageLayout.addRow(config.label, config.editor)
-        #         page.setLayout(pageLayout)
-        #         configWidget.addTab(page, groupname)
-        #     layout.addWidget(configWidget)
-        __add(self._configUI, separate=True)
-
-        # add actions
-        # if len(self.actions) > 0:
-        #     if isempty == False:
-        #         layout.addWidget(HorizontalSeparator())
-        #     isempty = False
-        #     repeatables = [action for action in self.actions.values() if isinstance(action, RepeatUI)]
-        #     singles     = [action for action in self.actions.values() if isinstance(action, ActionUI)]
-        #     for repeatable in repeatables:
-        #         layout.addWidget(repeatable)
-        #
-        #     if len(singles) > 0:
-        #         singlesLayout = QtWidgets.QHBoxLayout()
-        #         singlesLayout.addStretch()
-        #         for single in singles:
-        #             singlesLayout.addWidget(single)
-        #         layout.addLayout(singlesLayout)
-        __add(self._actionUI, separate=True)
-
-        # add 'stats' view
-        __add(self._statsUI)
-        # if (self.result is not None) and ('stats' in self.views.keys()):
-        #     isempty = False
-        #     layout.addWidget(self.views['stats'])
-
-        # add noteUI (if any)
-        __add(self._noteUI)
+        for uiobj, separate in ((self._serialUI, False),
+                                (self.status, False),
+                                (self._rawCommandUI, False),
+                                (self._modeUI, True),
+                                (self._configUI, True),
+                                (self._actionUI, True),
+                                (self._statsUI, False),
+                                (self._noteUI, False)):
+            __add(uiobj, separate=separate)
 
         # add loggers
         if len(self.loggers) == 0:
@@ -442,6 +383,7 @@ class TaskWidget(QtWidgets.QWidget):
                 box.setLayout(boxLayout)
                 layout.addWidget(box)
 
+        # format "surroundings"
         surrounding = QtWidgets.QGridLayout()
         surrounding.addLayout(layout, 0, 0)
         ncol = 1
@@ -474,95 +416,19 @@ class TaskWidget(QtWidgets.QWidget):
         widget._serialUI   = SerialIO(serialclient=serialclient, baud=baud,
                                    label="device for '{}': ".format(model.name))
         widget._serialUI.messageReceived.connect(widget.updateStatus)
-        if model.echo == True:
+
+        # configure 'echoed'
+        if model.echoed == True:
             widget._serialUI.messageReceived.connect(LoggerUI.echo)
-
-        # widget.features = OrderedDict()
-        # if 'note' in model.features:
-        #     widget.features['note'] = NoteUI()
-        #     widget.features['note'].setEnabled(False)
-
-        # add NoteUI
-        # set "echo" feature
-        # if 'echo' in model.features:
-        #     widget.serial.messageReceived.connect(LoggerUI.echo)
-
-        # if 'raw'  in model.features:
-        #     widget.features['raw']  = RawCommandUI()
-        #     widget.features['raw'].setEnabled(False)
-        #     widget.features['raw'].setSerialIO(widget.serial, output=True)
-
-        # set "control" feature
-        # widget.clearPlot = QtWidgets.QPushButton("Clear plots")
-        # widget.clearPlot.setEnabled(False)
-        # widget.quitApp   = QtWidgets.QPushButton("Quit")
-        # widget.quitApp.clicked.connect(widget.promptQuit)
-        # if 'control' in model.features:
-        #     controlbox     = QtWidgets.QHBoxLayout()
-        #     controlbox.addStretch()
-        #     controlbox.addWidget(widget.clearPlot)
-        #     controlbox.addWidget(widget.quitApp)
-        #     widget.features['control'] = controlbox
+        # configure 'controls'
         widget._controls = ControlUI.build(model, widget=widget)
 
-        # add ModeConfigUI
-        # if len(model.modes) > 0:
-        #     widget.modes    = ModeConfigUI(model.modes)
-        #     widget.modes.setSerialIO(widget.serial, output=True)
-
-        # add LineConfigUI's
-        # widget.configs  = OrderedDict()
-        # for name, config in model.configs.items():
-        #     if config.group not in widget.configs.keys():
-        #         widget.configs[config.group] = OrderedDict()
-        #     uiobj = LineConfigUI(config.label, config.command)
-        #     uiobj.setSerialIO(widget.serial, output=True)
-        #     widget.configs[config.group][name] = uiobj
-
-        # add Actions
-        # widget.actions  = OrderedDict()
-        # for name, action in model.actions.items():
-        #     uitype = RepeatUI if action.repeats == True else ActionUI
-        #     uiobj = uitype(action.label, action.command, returns=action.returns,
-        #                     criteria=action.criteria, strict=action.strict)
-        #     uiobj.setSerialIO(widget.serial, output=True)
-        #     widget.actions[name] = uiobj
-
+        # configure serial-based variables
         for cls in (ModeUI, ConfigUI, ActionUI, NoteUI, RawCommandUI):
             attrname = '_'+cls.__name__.lower()[0] + cls.__name__[1:]
             setattr(widget, attrname, cls.build(model, serial=widget._serialUI, output=True))
 
-        # add ResultParser
-        # if model.result is not None:
-        #     widget.result   = ResultParser(**(model.result.as_dict()))
-        #     widget.result.setSerialIO(widget.serial)
-        #     widget.views    = OrderedDict()
-        #
-        #     # add view(s)
-        #     if 'stats' in model.views.keys():
-        #         widget.views['stats'] = ResultStatsView(**model.views['stats'])
-        #         widget.views['stats'].setResultParser(widget.result)
-        #     if 'session' in model.views.keys():
-        #         items  = model.views['session'].get('items', ())
-        #         xwidth = model.views['session'].get('xwidth', None)
-        #         view   = SessionView(xwidth=xwidth)
-        #         for item in items:
-        #             if isinstance(item, StatusPlot):
-        #                 plotter = StatusPlotItem(item.colormappings,
-        #                                          markersize=item.markersize,
-        #                                          align=item.align)
-        #                 view.addPlotter(plotter)
-        #             elif isinstance(item, ArrayPlot):
-        #                 plotter = ArrayPlotItem(item.colormappings,
-        #                                         markersize=item.markersize)
-        #                 view.addPlotter(plotter)
-        #             else:
-        #                 print("***unknown plotter type: {}".format(type(item)))
-        #         view.setResultParser(widget.result)
-        #         widget.views['session'] = view
-        #
-        # else:
-        #     widget.result = None
+        # configure results
         widget._results     = ResultParser.build(model, serial=widget._serialUI, output=True)
         widget._statsUI     = ResultStatsUI.build(model, results=widget._results)
         widget._sessionView = SessionView.build(model, results=widget._results)
@@ -570,12 +436,6 @@ class TaskWidget(QtWidgets.QWidget):
         # add loggerUI
         widget._loggers  = LoggerUI.build(model,
                                 serial=widget._serialUI, note=widget._noteUI)
-        # for name, logger in model.loggers.items():
-        #     uiobj = LoggerUI.get(logger.name, label=logger.label, fmt=logger.fmt)
-        #     uiobj.attachSerialIO(widget.serial)
-        #     if 'note' in model.features:
-        #         uiobj.attachNoteUI(widget.features['note'])
-        #     widget.loggers[name] = uiobj
 
         widget.__layout()
         return widget
