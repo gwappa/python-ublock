@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from .core import protocol as _proto
 
 """the model layer of ublock."""
 
@@ -23,9 +24,8 @@ class Command:
 class Mode(Command):
     """a class that represents the task mode."""
 
-    def __init__(self, name, command, label=None, desc=None, defaultindex=0):
+    def __init__(self, name, command, label=None, desc=None):
         super().__init__(name, command, label=label, desc=desc)
-        self.defaultindex = defaultindex
 
 class Config(Command):
     """a class that represents the configuration parameters for the task."""
@@ -48,51 +48,118 @@ class Action(Command):
         self.criteria   = criteria
         self.strict     = strict
 
-class Logger:
-    def __init__(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
-        self.name   = name
-        self.label  = label
-        self.fmt    = fmt
-
 class Result:
     """a class that is used inside the Model instance
     to store the model of result messages.
     """
 
     def __init__(self, status=(), values=(), arrays=()):
-        self.status = list(status)
-        self.values = list(values)
-        self.arrays = list(arrays)
+        self.status     = list(status)
+        self.values     = list(values)
+        self.arrays     = list(arrays)
+        self.plotted    = OrderedDict()
+        self.counted    = []
+        self.rewarded   = []
+
+    def plot(self, item, **kwargs):
+        if not isinstance(item, str):
+            raise ValueError(f"expected a string, but got {item.__class__.__name__}")
+        if item in self.status:
+            self.plotted[item] = StatusPlot(item, **kwargs)
+        elif item in self.values:
+            self.plotted[item] = ValuePlot(item, **kwargs)
+        elif item in self.arrays:
+            self.plotted[item] = ArrayPlot(item, **kwargs)
+        else:
+            raise ValueError(f"Result.plot() only accepts the status/value/array names")
+
+    def count(self, item):
+        if not isinstance(item, str):
+            raise ValueError(f"expected a string, but got {item.__class__.__name__}")
+        elif item not in self.status:
+            raise ValueError(f"Result.count() only accepts names of a status")
+        self.counted.append(item)
+
+    def reward(self, item):
+        if not isinstance(item, str):
+            raise ValueError(f"expected a string, but got {item.__class__.__name__}")
+        elif item not in self.status:
+            raise ValueError(f"Result.reward() only accepts names of a status")
+        self.rewarded.append(item)
 
     def as_dict(self):
         return dict(status=self.status, values=self.values, arrays=self.arrays)
 
 class ResultPlot:
     """a base configuration class for plotting results"""
-    def __init__(self, colormappings, markersize=8):
+    def __init__(self, name, color='k', markersize=8, align='origin'):
         """
-        colormappings: (value, color) dictionary,
-        with 'value' being one of status/values/arrays in the result message.
+        'name' refers to one of status/values/arrays in the result message.
         """
-        self.colormappings  = colormappings
-        self.markersize     = markersize
+        self.name       = name
+        self.color      = color
+        self.markersize = markersize
+        self.align      = align
 
 class StatusPlot(ResultPlot):
-    """configuration used to generate plots for result status"""
-
-    def __init__(self, colormappings, markersize=8, align='origin'):
-        """colormappings: (status, color) dictionary
-        align: currently only allows 'origin'
-        """
-        super().__init__(colormappings, markersize=markersize)
-        self.align    = align
+    """configuration used to generate plots for result status."""
+    def __init__(self, name, color='k', markersize=8, align='origin'):
+        super().__init__(name, color=color, markersize=markersize, align=align)
 
 class ArrayPlot(ResultPlot):
-    """configuration used to generate plots for array-type results"""
+    """configuration used to generate plots for array-type results."""
+    def __init__(self, name, color='k', markersize=8, align='origin'):
+        super().__init__(name, color=color, markersize=markersize, align=align)
 
-    def __init__(self, colormappings, markersize=8):
-        """colormappings: (arrayname, color) dictionary"""
-        super().__init__(colormappings, markersize=markersize)
+class ValuePlot(ResultPlot):
+    """configuration used to generate plots for value-type results."""
+    def __init__(self, name, color='k', width=8, align='origin', start='none', stop='none'):
+        super().__init__(name, color=color, markersize=width, align=align)
+        self.start = start
+        self.stop  = stop
+
+    def __getattr__(self, name):
+        if name == 'width':
+            return self.markersize
+        else:
+            raise AttributeError(name)
+
+    def __setattr__(self, name, value):
+        if name == 'width':
+            super().__setattr__('markersize', value)
+        else:
+            super().__setattr__(name, value)
+
+class Responder:
+    """the base class for those that respond to messages from the serial line."""
+    def __init__(self, name, category=_proto.ALL):
+        self.name     = name
+        if isinstance(category, str):
+            self.category = (category,)
+        else:
+            self.category = tuple(category)
+
+class Logger(Responder):
+    def __init__(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
+        super().__init__(name, category=_proto.ALL)
+        self.label  = label
+        self.fmt    = fmt
+
+class Feature:
+    """"the class that represents an extra feature on the interface."""
+    def __init__(self, label='', desc=''):
+        self.label = label
+        self.desc  = desc
+
+class RawInput(Feature):
+    """the class that represents the raw-input UI."""
+    def __init__(self, label="Command", desc="raw command input"):
+        super().__init__(self, label, desc)
+
+class RunningNote(Feature):
+    """"the class that represents the running-note UI."""
+    def __init__(self, label="Running note", desc="running note"):
+        super().__init__(self, label, desc)
 
 class Task:
     """a class for construction of a serial communication model.
@@ -102,7 +169,11 @@ class Task:
     available_features = ('control', 'raw', 'note', 'echo')
     available_views    = ('stats', 'session', 'histogram')
 
-    def __init__(self, name):
+    def __init__(self, name,
+                    controls=True,
+                    echoed=True,
+                    rawcommand=False,
+                    note=True):
         """name: the name of this task"""
         self.name           = name
         self.modes          = OrderedDict()
@@ -148,11 +219,3 @@ class Task:
         contents of 'configs' vary according to the view type."""
         if name in self.available_views:
             self.views[name] = configs
-
-
-
-
-
-
-
-

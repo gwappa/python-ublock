@@ -15,6 +15,7 @@ class protocol:
     OUTPUT      = '<'
     DELIMITER   = ';'
     HELP        = '?'
+    ALL         = '' # wildcard used for not filtering responses
 
 class iothread(threading.Thread):
     def __init__(self, port, delegate, waitfirst=0, initialcmd=None):
