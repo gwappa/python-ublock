@@ -18,9 +18,8 @@ setuptools.setup(
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
         ],
-    packages=['ublock',],
+    packages=setuptools.find_packages(),
     entry_points={
         # nothing for the time being
     }
 )
-

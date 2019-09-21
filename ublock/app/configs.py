@@ -57,16 +57,16 @@ class TabConfigUI(QtWidgets.QTabWidget, ConfigUI):
     @classmethod
     def build(cls, configs, serial=None, output=True):
         uiconfigs = OrderedDict()
-        for config in configs.values():
+        for groupname, group in configs.items():
             uiconfigs[groupname] = OrderedDict()
-            for config in configs[groupname].values():
-                uiconfigs[groupname][config.name] = ConfigElementUI(config.label, config.command)
+            for config in group.values():
+                uiconfigs[groupname][config.name] = ConfigElement(config.label, config.command)
         if len(uiconfigs) == 0:
             return None
         else:
             return cls(uiconfigs, serial=serial, output=output)
 
-    def __init__(self, configs, serial=None, output=True):
+    def __init__(self, configs, serial=None, output=True, parent=None):
         super(QtWidgets.QTabWidget, self).__init__(parent=parent)
         super(ConfigUI, self).__init__()
         self.__mapping = OrderedDict()
