@@ -196,13 +196,13 @@ class Logger:
 
 def _checked_add(cmd, namedict, commands, label='item', task='task'):
     if cmd.name in namedict.keys():
-        raise ValueError(f"duplicate name found for {task}/{label}: {cmd.name}")
+        raise ValueError(f"duplicate name found for {label} in '{task}': {cmd.name}")
     else:
         dup = [item for item in commands if item.command == cmd.command]
         if len(dup) > 0:
-            raise ValueError(f"duplicate command found for {task}: {cmd.name} and {dup[0].name} ({cmd.command})")
+            raise ValueError(f"duplicate command found for '{task}': {cmd.name} and {dup[0].name} ({cmd.command})")
     namedict[cmd.name] = cmd
-    _fine(f"...loaded {label} for {task}: {cmd.name}({cmd.command})")
+    _fine(f"...loaded {label} for '{task}': {cmd.name}({cmd.command})")
 
 class Task:
     """a class for construction of a serial communication model.

@@ -22,6 +22,9 @@ def _fine(msg, end='\n'):
     if loglevel in ('debug', 'fine'):
         print(msg, end=end, file=sys.stderr, flush=True)
 
+def _warn(msg, end='\n'):
+    print(msg, end=end, file=sys.stderr, flush=True)
+
 def getApp():
     global _mainapp
     if _mainapp is None:
@@ -284,7 +287,6 @@ class TaskWidget(QtWidgets.QWidget):
     intended to be automatically generated from a model.Task instance."""
 
     name        = "task"
-    status      = None
 
     def __init__(self, name="task", parent=None):
         QtWidgets.QWidget.__init__(self, parent=parent)

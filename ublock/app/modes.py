@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from pyqtgraph.Qt import QtWidgets, QtCore
+from . import _debug
 
 class ModeUI(QtWidgets.QWidget):
     @classmethod
@@ -49,6 +50,7 @@ class ModeSelector(QtWidgets.QComboBox):
         super().__init__(parent=parent)
         self.loadOptions(options)
         self.setEnabled(False)
+        self.prevIndex = -1
 
     def setSerialIO(self, serial, output=True):
         """connects this configUI to a SerialIO.
@@ -83,7 +85,7 @@ class ModeSelector(QtWidgets.QComboBox):
     def updateConfigValue(self, msg):
         if all(c in msg for c in self._abbreviations):
             idx = msg.index(']') - 2
-            __debug(f"...mode->{idx}({self._abbreviations[idx]})")
+            _debug(f"...mode->{idx}({self._abbreviations[idx]})")
             self.setCurrentIndex(idx)
             self.currentModeChanged.emit(self.currentText())
             self.prevIndex = idx

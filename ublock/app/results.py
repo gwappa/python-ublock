@@ -1,6 +1,8 @@
 from traceback import print_exc
 from collections import OrderedDict
 from pyqtgraph.Qt import QtWidgets, QtCore
+from ..core import protocol as _proto
+from . import _debug
 
 class ResultParser(QtCore.QObject):
     """helps parsing the result messages.
@@ -43,17 +45,14 @@ class ResultParser(QtCore.QObject):
 
     def __parseSingleResult(self, token):
         token = token.strip()
-        if debug == True:
-            print(f"token({token})")
+        _debug(f"...parseSingleResult({token})")
         for s in self.status:
-            if debug == True:
-                print(f"testing status: {s}...")
+            _debug(f"...==? status({s})")
             if token == s:
                 self.resultStatusReceived.emit(s)
                 return
         for val in self.values:
-            if debug == True:
-                print(f"testing value: {val}...")
+            _debug(f"...==? value({val})")
             try:
                 if token.startswith(val):
                     arg = int(token[len(val):])
@@ -64,8 +63,7 @@ class ResultParser(QtCore.QObject):
                 print("***error while parsing value '{}': {}".format(val, token))
                 return
         for arr in self.arrays:
-            if debug == True:
-                print(f"testing array: {arr}...")
+            _debug(f"...==? array({arr})")
             try:
                 if token.startswith(arr):
                     arg = token[len(arr):]
@@ -88,7 +86,7 @@ class ResultParser(QtCore.QObject):
 
     def parseResult(self, line):
         self.beginParsing.emit()
-        tokens = line[1:].split(protocol.DELIMITER)
+        tokens = line.split(_proto.DELIMITER)
         for token in tokens:
             self.__parseSingleResult(token)
         self.endParsing.emit()

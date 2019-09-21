@@ -7,7 +7,7 @@ from eventcalls import EventHandler, Routine
 from eventcalls.io import SerialIO as SerialTerm
 
 from ..core import protocol
-from . import _debug, getApp as _getApp
+from . import _debug, _warn, getApp as _getApp
 
 class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
     """GUI widget for managing a serial connection.
@@ -47,7 +47,7 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
     outputMessageReceived   = QtCore.pyqtSignal(str)
     #    rawMessageReceived      = QtCore.pyqtSignal(str)
 
-    def __init__(self, clienttype='leonardo', handler=None,
+    def __init__(self, clienttype='leonardo', initialCommand='?', handler=None,
              label="Port: ", acqByResp=True, parent=None, **kwargs):
         super(QtWidgets.QWidget, self).__init__(parent=parent)
         super(EventHandler, self).__init__()
@@ -69,6 +69,8 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         #        self.io     = None
         #        self.reader = None
         self.clienttype = clienttype
+        if clienttype == 'leonardo':
+            self.initial = initialCommand
         self.term       = None
         self.routine    = None
         self.active     = False     # whether or not this IO is "connected"
@@ -90,7 +92,7 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
 
     def __getattr__(self, name):
         if name == 'active':
-            return super().__getattr__("_active")
+            return self._active
         else:
             return super().__getattr__(name)
 
@@ -104,14 +106,15 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         if self.routine is not None:
             self.routine.stop()
             self.routine = None
+            self.term    = None
             self.serialClosed.emit()
-            self.active = False
 
     def initialized(self, evt=None):
         """EventHandler callback."""
         _debug("...initialized() callback")
         if self.clienttype == 'leonardo':
             self.active = True
+            self.request(self.initial)
 
     def done(self, evt=None):
         """EventSource callback."""
@@ -158,30 +161,40 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         """sends a line of command (not having the newline character(s))
         through the serial port."""
         _debug(f"...request('{line}')")
-        if self.io is not None:
+        if self.term is not None:
             with self.transact:
-                self.io.request(line)
+                self.term.write(line.encode('ascii'))
+            _debug(f"...done request")
 
     def _handle_for(self, line, ch, sig, esig):
         if line.startswith(ch):
-            sig.emit(line[1:])
+            line = line[1:].strip()
+            sig.emit(line)
             if esig is not None:
-                elems = [v.strip() for v in line[1:].split(self.DELIMITER) \
+                elems = [v.strip() for v in line.split(self.DELIMITER) \
                             if len(v.strip()) > 0]
                 for elem in elems:
                     esig.emit(elem)
+            return True
+        else:
+            return False
 
     def handle(self, line):
         """re-implementing EventHandler's `received`"""
         _debug(f"...handle('{line}')")
+        if self.active == False:
+            # this is the case for UNO-type
+            self.active = True
+        line = line.decode('ascii').strip()
         with self.transact:
             self.messageReceived.emit(line)
-            self._handle_for(line, self.DEBUG,  self.debugMessageReceived,  None)
-            self._handle_for(line, self.INFO,   self.infoMessageReceived,   None)
-            self._handle_for(line, self.CONFIG, self.configMessageReceived, self.configElementReceived)
-            self._handle_for(line, self.RESULT, self.resultMessageReceived, self.resultElementReceived)
-            self._handle_for(line, self.ERROR,  self.errorMessageReceived,  None)
-            self._handle_for(line, self.OUTPUT, self.outputMessageReceived, None)
+            if (not self._handle_for(line, self.DEBUG, self.debugMessageReceived, None)) and \
+                    (not self._handle_for(line, self.INFO,   self.infoMessageReceived,   None)) and \
+                    (not self._handle_for(line, self.CONFIG, self.configMessageReceived, self.configElementReceived)) and \
+                    (not self._handle_for(line, self.RESULT, self.resultMessageReceived, self.resultElementReceived)) and \
+                    (not self._handle_for(line, self.ERROR,  self.errorMessageReceived,  None)) and \
+                    (not self._handle_for(line, self.OUTPUT, self.outputMessageReceived, None)):
+                _warn(f"***not handled: '{line}'")
 
 #    def message(self, line):
 #        """re-implementing eventhandler's `message`"""
