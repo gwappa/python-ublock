@@ -1,5 +1,3 @@
 from .core import *
-from .model import Task
 
-VERSION_STR = "0.1.3"
-
+VERSION_STR = "0.2.0"

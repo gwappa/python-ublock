@@ -1,5 +1,7 @@
 from collections import OrderedDict
+import pyqtgraph as pg
 from pyqtgraph.Qt import QtWidgets, QtCore
+# from .model import StatusPlot, ArrayPlot
 
 class SessionView(pg.PlotWidget):
     """an aligned multi-trial view, that is designed to show
@@ -16,7 +18,6 @@ class SessionView(pg.PlotWidget):
     @classmethod
     def build(cls, model, results=None, controls=None):
         ui = cls()
-        
         # items  = model.views['session'].get('items', ())
         # xwidth = model.views['session'].get('xwidth', None)
         # view   = SessionView(xwidth=xwidth)

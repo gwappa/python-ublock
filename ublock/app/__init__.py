@@ -1,47 +1,38 @@
 from warnings import warn
 try:
-    import pyqtgraph as pg
     from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
 except ImportError:
     raise RuntimeError("ublock.app submodule is disabled; install the 'pyqtgraph' module to use it.")
 
-import sys, os
+import sys
 from datetime import datetime
 from collections import OrderedDict
-from traceback import print_exc
-from eventcalls.io import SerialIO as SerialTerm
 
-# from .model import StatusPlot, ArrayPlot
-
-from .actions  import ActionUI
-from .configs  import ConfigUI
-from .features import RawCommandUI, NoteUI, ControlUI
-from .modes    import ModeUI
-from .plots    import SessionView
-from .results  import ResultParser, ResultStatsUI
-from .serial   import SerialIO
-
-__mainapp = None
+_mainapp = None
 
 # used only for debugging via the console
 # to be removed some time in the future
-debug = False
+loglevel = 'fine'
 
-def __debug(msg, end='\n'):
-    if debug == True:
+def _debug(msg, end='\n'):
+    if loglevel == 'debug':
+        print(msg, end=end, file=sys.stderr, flush=True)
+
+def _fine(msg, end='\n'):
+    if loglevel in ('debug', 'fine'):
         print(msg, end=end, file=sys.stderr, flush=True)
 
 def getApp():
-    global __mainapp
-    if __mainapp is None:
-        __mainapp = QtGui.QApplication([])
-    return __mainapp
+    global _mainapp
+    if _mainapp is None:
+        _mainapp = QtGui.QApplication([])
+    return _mainapp
 
 def setApp(app):
-    global __mainapp
-    if __mainapp is not None:
+    global _mainapp
+    if _mainapp is not None:
         raise RuntimeError("an application has been already initialized")
-    __mainapp = app
+    _mainapp = app
 
 def HorizontalSeparator():
     line = QtWidgets.QFrame()
@@ -229,7 +220,7 @@ class LoggerUI(QtWidgets.QGroupBox):
         self.hbox.addWidget(self.button)
         self.setLayout(self.hbox)
         self.button.clicked.connect(self.renew)
-        mainapp.aboutToQuit.connect(self.close)
+        getApp().aboutToQuit.connect(self.close)
 
     @staticmethod
     def printStatus(line):
@@ -399,21 +390,16 @@ class TaskWidget(QtWidgets.QWidget):
         self.setLayout(surrounding)
 
     @staticmethod
-    def fromTask(model, serialclient='leonardo', baud=9600):
+    def fromTask(model, clienttype='leonardo', baud=9600):
         """generates a (connected) UI from the given model.Task instance."""
-        if isinstance(serialclient, str):
-            clienttype = serialclient.lower()
-            if clienttype == 'leonardo':
-                clienttype = client.Leonardo
-            elif clienttype == 'uno':
-                clienttype = client.Uno
-            else:
-                raise ValueError("unknown client type: "+serialclient)
-            serialclient = clienttype
+        if clienttype not in ('uno', 'leonardo'):
+            raise ValueError("unknown client type: "+clienttype)
+        if not _mainapp:
+            getApp()
 
         widget = TaskWidget(name=model.name)
         # add SerialIO UI
-        widget._serialUI   = SerialIO(serialclient=serialclient, baud=baud,
+        widget._serialUI   = SerialIO(clienttype=clienttype, baud=baud,
                                    label="device for '{}': ".format(model.name))
         widget._serialUI.messageReceived.connect(widget.updateStatus)
 
@@ -441,3 +427,11 @@ class TaskWidget(QtWidgets.QWidget):
         return widget
 
 fromTask = TaskWidget.fromTask
+
+from .actions  import ActionUI
+from .configs  import ConfigUI
+from .features import RawCommandUI, NoteUI, ControlUI
+from .modes    import ModeUI
+from .plots    import SessionView
+from .results  import ResultParser, ResultStatsUI
+from .serial   import SerialIO

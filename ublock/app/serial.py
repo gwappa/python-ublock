@@ -3,8 +3,10 @@ from pyqtgraph.Qt import QtWidgets, QtCore
 
 from serial.tools import list_ports
 from eventcalls import EventHandler, Routine
+from eventcalls.io import SerialIO as SerialTerm
 
-from .core import protocol
+from ..core import protocol
+from . import _debug, getApp as _getApp
 
 class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
     """GUI widget for managing a serial connection.
@@ -51,7 +53,7 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         if clienttype not in ('leonardo', 'uno'):
             raise ValueError(f"client type must be one of ('leonardo', 'uno'), got {clienttype}")
 
-        mainapp.aboutToQuit.connect(self.closePort)
+        _getApp().aboutToQuit.connect(self.closePort)
         self.portEnumerator = QtWidgets.QComboBox()
         self.enumeratePorts()
         self.portEnumerator.currentIndexChanged.connect(self.updateSelection)
@@ -66,6 +68,8 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         #        self.io     = None
         #        self.reader = None
         self.clienttype = clienttype
+        self.term       = None
+        self.routine    = None
         self.active     = False     # whether or not this IO is "connected"
 
         layout = QtWidgets.QHBoxLayout()
@@ -89,12 +93,12 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
             return super().__getattr__(name)
 
     def openPort(self, addr):
-        __debug(f"...openPort({addr})")
+        _debug(f"...openPort({addr})")
         self.term    = SerialTerm.open(addr)
         self.routine = Routine(self.term, self, start=True)
 
     def closePort(self):
-        __debug("...closePort()")
+        _debug("...closePort()")
         if self.routine is not None:
             self.routine.stop()
             self.routine = None
@@ -103,13 +107,13 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
 
     def initialized(self, evt=None):
         """EventHandler callback."""
-        __debug("...initialized() callback")
+        _debug("...initialized() callback")
         if self.clienttype == 'leonardo':
             self.active = True
 
     def done(self, evt=None):
         """EventSource callback."""
-        __debug("...done() callback")
+        _debug("...done() callback")
         self.active = False
 
     def enumeratePorts(self):
@@ -130,7 +134,7 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
     @QtCore.pyqtSlot(int)
     def updateSelection(self, idx):
         """called when the user changes the combobox selection."""
-        __debug(f"...selected({idx})")
+        _debug(f"...selected({idx})")
         if idx > len(self.ports):
             # re-enumerate command
             self.enumeratePorts()
@@ -151,13 +155,13 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
     def request(self, line):
         """sends a line of command (not having the newline character(s))
         through the serial port."""
-        __debug(f"...request('{line}')")
+        _debug(f"...request('{line}')")
         if self.io is not None:
             self.io.request(line)
 
     def handle(self, line):
         """re-implementing EventHandler's `received`"""
-        __debug(f"...handle('{line}')")
+        _debug(f"...handle('{line}')")
         self.messageReceived.emit(line)
         for ch, sig, esig in ((self.DEBUG,  self.debugMessageReceived,  None),
                               (self.INFO,   self.infoMessageReceived,   None),

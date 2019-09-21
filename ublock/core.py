@@ -1,7 +1,6 @@
-import time
-import threading
-from traceback import print_tb
-import serial
+from collections import OrderedDict
+
+"""the core model layer of ublock."""
 
 class protocol:
     """used for discriminating between line messages
@@ -17,312 +16,290 @@ class protocol:
     HELP        = '?'
     ALL         = '' # wildcard used for not filtering responses
 
-class iothread(threading.Thread):
-    def __init__(self, port, delegate, waitfirst=0, initialcmd=None):
-        super().__init__()
-        self.port       = port
-        self.quitreq    = False
-        self.buf        = b''
-        self.delegate   = delegate
-        self.connected  = False
-        self.waitfirst  = waitfirst
-        self.initialcmd = initialcmd
-        self.port.timeout = 1
-        self.start()
+class Command:
+    """the base class for command-based parameters."""
 
-    def writeLine(self, msg):
-        self.port.write((msg + "\r\n").encode())
+    def __init__(self, name, command, label=None, desc=None):
+        if name is None:
+            raise ValueError("'name' cannot be None for a {} instance".format(self.__class__.__name__))
+        elif command is None:
+            raise ValueError("'command' cannot be None for a {} instance".format(self.__class__.__name__))
+        elif desc is None:
+            desc = name
+        if label is None:
+            label = name
 
-    def interrupt(self):
-        self.quitreq = True
-        self.port.close()
+        self.name       = name
+        self.command    = command
+        self.label      = label
+        self.desc       = desc
 
-    def run(self):
-        time.sleep(self.waitfirst)
-        if self.initialcmd is not None:
-            self.writeLine(self.initialcmd)
-        try:
-            while not self.quitreq:
-                try:
-                    ch = self.port.read()
-                except serial.SerialTimeoutException:
-                    continue
-                if self.connected == False:
-                    self.connected = True
-                    self.delegate.connected()
-                self.buf += ch
-                if ch == b'\n':
-                    self.delegate.handleLine(self.buf[:-2].decode().strip())
-                    self.buf = b''
-        except serial.SerialException:
-            pass # just finish the thread
-        print(">port closed")
-        self.delegate.closed()
+class Mode(Command):
+    """a class that represents the task mode."""
 
-class baseclient:
-    def __init__(self, addr, baud=9600, waitfirst=0, initialcmd=None):
-        self.port       = serial.Serial(port=addr, baudrate=baud)
-        self.io         = iothread(self.port, self, initialcmd=initialcmd, waitfirst=waitfirst)
+    def __init__(self, name, command, label=None, desc=None):
+        super().__init__(name, command, label=label, desc=desc)
 
-    def __enter__(self):
+class Config(Command):
+    """a class that represents the configuration parameters for the task."""
+
+    def __init__(self, name, command, label=None, desc=None, group=None,
+                 defaultvalue=0):
+        super().__init__(name, command, label=label, desc=desc)
+        self.group = str(group)
+        self.defaultvalue = int(defaultvalue)
+
+class Action(Command):
+    """a class that represents the task action."""
+
+    def __init__(self, name, command, label=None, desc=None,
+                 repeats=True, returns='result', criteria=None,
+                 strict=None):
+        super().__init__(name, command, label=label, desc=desc)
+        self.returns    = returns
+        self.repeats    = bool(repeats)
+        self.criteria   = criteria
+        self.strict     = strict
+
+class Results:
+    """a class that is used inside the Model instance
+    to store the model of result messages.
+    """
+
+    def __init__(self, status=(), values=(), arrays=(),
+                plotted=dict(), counted=(), rewarded=()):
+        self.status     = list(status)
+        self.values     = list(values)
+        self.arrays     = list(arrays)
+        self.plotted    = OrderedDict()
+        for name, kwargs in plotted.items():
+            self.plot(name, **kwargs)
+        self.counted    = list(counted)
+        self.rewarded   = list(rewarded)
+
+    def plot(self, item, **kwargs):
+        if isinstance(item, ResultPlot):
+            for lab, ls in (("status", self.status),
+                            ("value",  self.values),
+                            ("array",  self.arrays)):
+                if item.category == lab:
+                    if item.name not in ls:
+                        raise ValueError(f"name '{item.name}' not found as a result {lab}")
+                    else:
+                        self.plotted[item.name] = item
+                        return
+            raise ValueError(f"unknown result category: {item.category}")
+        elif not isinstance(item, str):
+            raise ValueError(f"expected a string, but got {item.__class__.__name__}")
+
+        if item in self.status:
+            self.plotted[item] = StatusPlot(item, **kwargs)
+        elif item in self.values:
+            self.plotted[item] = ValuePlot(item, **kwargs)
+        elif item in self.arrays:
+            self.plotted[item] = ArrayPlot(item, **kwargs)
+        else:
+            raise ValueError(f"Result.plot() only accepts the status/value/array names")
+
+    def count(self, item):
+        if not isinstance(item, str):
+            raise ValueError(f"expected a string, but got {item.__class__.__name__}")
+        elif item not in self.status:
+            raise ValueError(f"Result.count() only accepts names of a status")
+        self.counted.append(item)
+
+    def reward(self, item):
+        if not isinstance(item, str):
+            raise ValueError(f"expected a string, but got {item.__class__.__name__}")
+        elif item not in self.status:
+            raise ValueError(f"Result.reward() only accepts names of a status")
+        self.rewarded.append(item)
+
+    def as_dict(self):
+        return dict(status=self.status, values=self.values, arrays=self.arrays)
+
+class ResultPlot:
+    """a base configuration class for plotting results"""
+    def __init__(self, name, category='none',
+                 color='k', markersize=8, align='origin'):
+        """
+        'name' refers to one of status/values/arrays in the result message.
+        """
+        self.name       = name
+        self.category   = category
+        self.color      = color
+        self.markersize = markersize
+        self.align      = align
+
+class StatusPlot(ResultPlot):
+    """configuration used to generate plots for result status."""
+    def __init__(self, name, color='k', markersize=8, align='origin'):
+        super().__init__(name, category='status',
+                        color=color, markersize=markersize, align=align)
+
+class ArrayPlot(ResultPlot):
+    """configuration used to generate plots for array-type results."""
+    def __init__(self, name, color='k', markersize=8, align='origin'):
+        super().__init__(name, category='array',
+                        color=color, markersize=markersize, align=align)
+
+class ValuePlot(ResultPlot):
+    """configuration used to generate plots for value-type results."""
+    def __init__(self, name, color='k', width=8, align='origin', start='none', stop='none'):
+        super().__init__(name, category='value',
+                        color=color, markersize=width, align=align)
+        self.start = start
+        self.stop  = stop
+
+    def __getattr__(self, name):
+        if name == 'width':
+            return self.markersize
+        else:
+            raise AttributeError(name)
+
+    def __setattr__(self, name, value):
+        if name == 'width':
+            super().__setattr__('markersize', value)
+        else:
+            super().__setattr__(name, value)
+#
+# class Responder:
+#     """the base class for those that respond to messages from the serial line."""
+#     def __init__(self, name, category=protocol.ALL):
+#         self.name     = name
+#         if isinstance(category, str):
+#             self.category = (category,)
+#         else:
+#             self.category = tuple(category)
+
+class Logger:
+    def __init__(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
+        self.name   = name
+        self.label  = label
+        self.fmt    = fmt
+
+# class Feature:
+#     """"the class that represents an extra feature on the interface."""
+#     def __init__(self, label='', desc=''):
+#         self.label = label
+#         self.desc  = desc
+#
+# class RawInput(Feature):
+#     """the class that represents the raw-input UI."""
+#     def __init__(self, label="Command", desc="raw command input"):
+#         super().__init__(self, label, desc)
+#
+# class RunningNote(Feature):
+#     """"the class that represents the running-note UI."""
+#     def __init__(self, label="Running note", desc="running note"):
+#         super().__init__(self, label, desc)
+
+def _checked_add(cmd, namedict, commands, label='item', task='task'):
+    if cmd.name in namedict.keys():
+        raise ValueError(f"duplicate name found for {task}/{label}: {cmd.name}")
+    else:
+        dup = [item for item in commands if item.command == cmd.command]
+        if len(dup) > 0:
+            raise ValueError(f"duplicate command found for {task}: {cmd.name} and {dup[0].name} ({cmd.command})")
+    namedict[cmd.name] = cmd
+    _fine(f"...loaded {label} for {task}: {cmd.name}({cmd.command})")
+
+class Task:
+    """a class for construction of a serial communication model.
+    it does not do anything per se, but it helps generate the UI
+    through e.g. ublock.app.fromTask(task) or ublock.tty.fromTask(task).
+    """
+
+    def __init__(self, name,
+                    controls=True,
+                    echoed=True,
+                    rawcommand=False,
+                    note=True):
+        """name: the name of this task"""
+        self.name       = name
+        self._modes     = OrderedDict()
+        self._configs   = OrderedDict()
+        self._actions   = OrderedDict()
+        self._loggers   = OrderedDict()
+
+        self._results   = None
+        self.controls   = controls
+        self.echoed     = echoed
+        self.rawcommand = rawcommand
+        self.note       = note
+
+    def __getattr__(self, name):
+        if name in ('modes', 'actions', 'loggers', 'results'):
+            return getattr(self, '_'+name)
+        elif name == 'configs':
+            # order by groups
+            out = OrderedDict()
+            for cfg in self._configs.values():
+                if cfg.group not in out.keys():
+                    out[cfg.group] = OrderedDict()
+                out[cfg.group][cfg.name] = cfg
+            return out
+        elif name == 'commands':
+            return sum([list(m.values()) for m in (self._modes,
+                                                   self._configs,
+                                                   self._actions)],
+                        [])
+        else:
+            raise AttributeError(name)
+
+    def add(self, item):
+        if isinstance(item, Results):
+            if self._results is None:
+                self._results = item
+            else:
+                raise ValueError("cannot set two Results instance!")
+        elif isinstance(item, Mode):
+            _checked_add(item, self._modes, self.commands, label='mode', task=self.name)
+        elif isinstance(item, Config):
+            _checked_add(item, self._configs, self.commands, label='config', task=self.name)
+        elif isinstance(item, Action):
+            _checked_add(item, self._actions, self.commands, label='action', task=self.name)
+        elif isinstance(item, Logger):
+            if item.name in self._loggers:
+                raise ValueError(f"duplicate name found for {self.name}/logger: {item.name}")
+            self._loggers[item.name] = item
+
         return self
 
-    def __exit__(self, exc, *args):
-        if exc is not None:
-            print_tb()
-        self.close()
+    # def addMode(self, name, command, label=None, desc=None,
+    #             defaultindex=0):
+    #     self.modes[name] = Mode(name, command, label=label, desc=desc,
+    #                             defaultindex=defaultindex)
+    #
+    # def addConfig(self, name, command, label=None, desc=None, group=None,
+    #               defaultvalue=0):
+    #     self.configs[name] = Config(name, command, label=label,
+    #                                 desc=desc, group=group,
+    #                                 defaultvalue=defaultvalue)
+    #
+    # def addAction(self, name, command, label=None, desc=None,
+    #               returns='result', repeats=True, criteria=None, strict=None):
+    #     self.actions[name] = Action(name, command, label=label,
+    #                                 desc=desc, repeats=repeats,
+    #                                 returns=returns, criteria=criteria, strict=strict)
+    #
+    # def setResult(self, status=(), values=(), arrays=()):
+    #     self.result = Result(status, values, arrays)
+    #
+    # def addLogger(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
+    #     self.loggers[name] = Logger(name, label=label, fmt=fmt)
+    #
+    # def addFeatures(self, *features):
+    #     """current set of features: see Task.available_features"""
+    #     for feature in features:
+    #         feature = feature.strip()
+    #         if feature in self.available_features:
+    #             self.features.append(feature)
+    #
+    # def addView(self, name, **configs):
+    #     """adds a result view with the type 'name' to this model.
+    #     contents of 'configs' vary according to the view type."""
+    #     if name in self.available_views:
+    #         self.views[name] = configs
 
-    def connected(self):
-        pass
-
-    def closed(self):
-        pass
-
-    def close(self):
-        if self.io is not None:
-            self.io.interrupt()
-            self.io.join()
-            self.io = None
-
-    def request(self, cmd):
-        if self.io is not None and self.io.connected == True:
-            self.io.writeLine(cmd)
-        else:
-            print("***port not connected: {}".format(self.addr))
-
-    def handleLine(self,line):
-        pass
-
-class eventhandler:
-    """the interface class for receiving events from CUISerial protocol.
-    except for `connected` and `closed`, the meaning of each type of messages
-    is up to the user."""
-
-    def connected(self, client):
-        """called when a serial port is opened (does not necessarily mean
-        that the port is ready for receiving commands).
-        
-        `client` stands for the corresponding `client` object."""
-        pass
-
-    def closed(self):
-        """called when the connected serial port is closed."""
-        pass
-    
-    def received(self, line):
-        """called with a raw line that arrived at the serial port."""
-        pass
-
-    def debug(self, line):
-        pass
-
-    def info(self, line):
-        pass
-
-    def config(self, line):
-        pass
-
-    def result(self, line):
-        pass
-
-    def error(self, line):
-        pass
-
-    def output(self, line):
-        pass
-
-    def message(self, line):
-        """called with a line that does not fall into any of the other
-        categories"""
-        pass
-        
-def tokenize(line, ch=protocol.DELIMITER, has_header=True):
-    """a utility function to split an input line into a chunk of tokens.
-    it yields a token a time until it reaches the end of line."""
-
-    if has_header == True:
-        line = line[1:]
-    elems = line.split(ch)
-
-    # stripping on the right hand side
-    while len(elems[-1].strip()) == 0:
-        elems = elems[:-1]
-
-    if len(elems) == 0:
-        yield line
-    else:
-        for elem in elems:
-            if len(elem) == 0:
-                yield elem
-
-class client(baseclient):
-    """a client for serial communication that conforms to the CUISerial protocol."""
-    def __init__(self, addr, handler=None, baud=9600, waitfirst=0, initialcmd=None):
-        super().__init__(addr, baud=baud, waitfirst=waitfirst, initialcmd=initialcmd)
-        if handler is None:
-            handler = eventhandler()
-        self.handler = handler
-
-    @classmethod
-    def Uno(cls, addr, handler=None, baud=9600, initialcmd=None):
-        """default call signatures for Uno-type boards."""
-        return cls(addr, handler=handler, baud=baud, waitfirst=1.2, initialcmd=initialcmd)
-
-    @classmethod
-    def Leonardo(cls, addr, handler=None, baud=9600, initialcmd=protocol.HELP):
-        """default call signatures for Leonardo-type boards."""
-        return cls(addr, handler=handler, baud=baud, waitfirst=0, initialcmd=initialcmd)
-
-    def connected(self):
-        self.handler.connected(self)
-
-    def closed(self):
-        self.handler.closed()
-
-    def handleLine(self, line):
-        """calls its handler's method(s) in turn, based on its first character."""
-        if self.handler is None:
-            return
-        self.handler.received(line)
-
-        line = line.strip()
-        if line.startswith(protocol.DEBUG):
-            self.handler.debug(line)
-        elif line.startswith(protocol.INFO):
-            self.handler.info(line)
-        elif line.startswith(protocol.CONFIG):
-            self.handler.config(line)
-        elif line.startswith(protocol.RESULT):
-            self.handler.result(line)
-        elif line.startswith(protocol.ERROR):
-            self.handler.error(line)
-        elif line.startswith(protocol.OUTPUT):
-            self.handler.output(line)
-        else:
-            self.handler.message(line)
-    
-    def close(self):
-        if self.io is not None:
-            super().close()
-            if self.handler is not None:
-                self.handler.closed()
-
-class loophandler:
-    """the interface for classes that receive messages from `loop`."""
-
-    def starting(self, command, number, counter):
-        """invoked when single loop with index being `counter`,
-        out of total number `number`, is starting"""
-        pass
-
-    def evaluate(self, result):
-        """should return a boolean value whether or not to increment
-        the counter, given the `result` message."""
-        return True
-
-    def request(self, command):
-        """proxy for serial I/O to dispatch a request."""
-        raise RuntimeError("no IO linked to: {}".format(self))
-
-    def done(self, command, number, counter):
-        """invoked when the whole loop is ending."""
-        pass
-
-class loop:
-    """class that handles loop structures.
-    
-    `io` can be any `client`-type instance (that accepts `request()`).
-    `handler` is supposed to be a `loophandler` object.
-    both `io` and `handler` can be set later, but before calling the
-    `start()` (or `run()`) method.
-
-    note that its `run()` method by itself only specifies 
-    the procedure itself, and it does not run in another thread.
-
-    by calling its `start()` method, instead, it returns a new loop
-    execution thread.
-    """
-
-    def __init__(self, command, number, interval=0,
-                    io=None, handler=None):
-        super().__init__()
-        self.command  = command
-        self.io       = io
-        self.number   = number
-        self.interval = interval
-        self.handler  = loophandler() if handler is None else handler
-        self.update   = threading.Condition()
-        self.result   = None
-        self.toabort  = False
-
-    def start(self, init=threading.Thread):
-        """starts a new thread that has this instance's `run()`
-        as the target.
-
-        the callable responsible for the thread generation
-        can be specified via the `init` keyword argument
-        (note that the callable must take the `target` option
-        to be compatible with the threading.Thread initializer).
-        
-        returns the started thread.
-        """
-        thread = init(target=self.run)
-        thread.start()
-        return thread
-
-    def run(self):
-        counter = 0
-        self.toabort = False
-        while counter < self.number:
-            self.handler.starting(self.command,self.number,counter)
-            self.update.acquire()
-            try:
-                if self.io is not None:
-                    self.io.request(self.command)
-                    self.update.wait()
-                    if self.handler.evaluate(self.result) == True:
-                        counter += 1
-                    if self.toabort == True:
-                        break
-                else:
-                    print("***no IO linked to: {}".format(self))
-                    break
-            finally:
-                self.update.release()
-            if (self.number > 1) and (self.interval > 0):
-                time.sleep(self.interval)
-        self.handler.done(self.command,self.number,counter)
-
-    def abort(self):
-        self.update.acquire()
-        self.toabort = True
-        self.update.release()
-
-    def updateWithMessage(self, msg):
-        self.update.acquire()
-        self.result = msg
-        self.update.notify_all()
-        self.update.release()
-
-def testResult(status_set, returns='result'):
-    """generates an evaluator that tests if the returned status
-    starts with one of the word in `status_set`.
-
-    intended for the use with `loophandler.evaluate()`.
-    """
-    if returns.lower() == 'result':
-        header = protocol.RESULT
-    elif returns.lower() == 'config':
-        header = protocol.CONFIG
-    else:
-        raise ValueError("'returns' currently only accepts 'result' or 'config'")
-
-    def __evaluator(msg):
-        if protocol.DELIMITER in msg:
-            msg = msg[:(msg.index(protocol.DELIMITER))]
-        if msg[0] == header:
-            msg = msg[1:]
-        return (msg in status_set)
-    return __evaluator
-
-
+from .app import _debug, _fine

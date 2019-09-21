@@ -31,7 +31,7 @@ class SimpleConfigUI(QtWidgets.QWidget, ConfigUI):
         self.setLayout(self.__layout)
         self.__mapping = OrderedDict()
         for name, ui in configs.items():
-            self.__mapping = ui
+            self.__mapping[name] = ui
             self.__layout.addRow(ui.label, ui.editor)
         if serial is not None:
             self.setSerialIO(serial, output=output)
@@ -57,7 +57,7 @@ class TabConfigUI(QtWidgets.QTabWidget, ConfigUI):
     @classmethod
     def build(cls, configs, serial=None, output=True):
         uiconfigs = OrderedDict()
-        for groupname in configs.values():
+        for config in configs.values():
             uiconfigs[groupname] = OrderedDict()
             for config in configs[groupname].values():
                 uiconfigs[groupname][config.name] = ConfigElementUI(config.label, config.command)

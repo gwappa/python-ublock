@@ -53,7 +53,7 @@ class NoteUI(QtWidgets.QGroupBox):
     @classmethod
     def build(cls, model, serial=None, output=True):
         if model.note == True:
-            return cls
+            return cls()
         else:
             return None
 
@@ -98,7 +98,7 @@ class ControlUI(QtWidgets.QWidget):
             return None
 
     def __init__(self, parent=None):
-        QtWidgets.QWidget.__init__(parent=parent)
+        super(QtWidgets.QWidget, self).__init__(parent=parent)
         self.clearButton = QtWidgets.QPushButton("Clear plots")
         self.clearButton.setEnabled(False)
         self.clearButton.clicked.connect(self.promptClear)
@@ -108,8 +108,8 @@ class ControlUI(QtWidgets.QWidget):
         self.__layout     = QtWidgets.QHBoxLayout()
         self.setLayout(self.__layout)
         self.__layout.addStretch()
-        self.__layout.addWidget(widget.clearButton)
-        self.__layout.addWidget(widget.quitButton)
+        self.__layout.addWidget(self.clearButton)
+        self.__layout.addWidget(self.quitButton)
 
     def promptClear(self):
         ret = QtWidgets.QMessageBox.warning(self,

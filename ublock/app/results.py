@@ -1,6 +1,6 @@
+from traceback import print_exc
 from collections import OrderedDict
 from pyqtgraph.Qt import QtWidgets, QtCore
-
 
 class ResultParser(QtCore.QObject):
     """helps parsing the result messages.
@@ -19,11 +19,11 @@ class ResultParser(QtCore.QObject):
 
     @classmethod
     def build(cls, model, serial=None, output=None):
-        result = model.result
-        if result is not None:
-            ui = cls(status=result.status,
-                     values=result.values,
-                     arrays=result.arrays)
+        results = model.results
+        if results is not None:
+            ui = cls(status=results.status,
+                     values=results.values,
+                     arrays=results.arrays)
             if serial is not None:
                 ui.setSerialIO(serial)
             return ui
@@ -98,7 +98,7 @@ class ResultStatsUI(QtWidgets.QGroupBox):
 
     @classmethod
     def build(cls, model, results=None):
-        mres = model.result
+        mres = model.results
         if mres is None:
             return None
 
@@ -107,7 +107,7 @@ class ResultStatsUI(QtWidgets.QGroupBox):
         if len(counted) + len(rewarded) == 0:
             return None
 
-        ui = ResultStatsView(summarized=counted, rewarded=rewarded)
+        ui = cls(summarized=counted, rewarded=rewarded)
         if results is not None:
             ui.setResultParser(results)
         return ui
