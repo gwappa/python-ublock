@@ -1,4 +1,5 @@
-from collections import OrderedDict
+from collections  import OrderedDict
+from threading    import Lock
 from pyqtgraph.Qt import QtWidgets, QtCore
 
 from serial.tools import list_ports
@@ -71,6 +72,7 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         self.term       = None
         self.routine    = None
         self.active     = False     # whether or not this IO is "connected"
+        self.transact   = Lock()
 
         layout = QtWidgets.QHBoxLayout()
         self.setLayout(layout)
@@ -157,25 +159,29 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         through the serial port."""
         _debug(f"...request('{line}')")
         if self.io is not None:
-            self.io.request(line)
+            with self.transact:
+                self.io.request(line)
+
+    def _handle_for(self, line, ch, sig, esig):
+        if line.startswith(ch):
+            sig.emit(line[1:])
+            if esig is not None:
+                elems = [v.strip() for v in line[1:].split(self.DELIMITER) \
+                            if len(v.strip()) > 0]
+                for elem in elems:
+                    esig.emit(elem)
 
     def handle(self, line):
         """re-implementing EventHandler's `received`"""
         _debug(f"...handle('{line}')")
-        self.messageReceived.emit(line)
-        for ch, sig, esig in ((self.DEBUG,  self.debugMessageReceived,  None),
-                              (self.INFO,   self.infoMessageReceived,   None),
-                              (self.CONFIG, self.configMessageReceived, self.configElementReceived),
-                              (self.RESULT, self.resultMessageReceived, self.resultElementReceived),
-                              (self.ERROR,  self.errorMessageReceived,  None),
-                              (self.OUTPUT, self.outputMessageReceived, None)):
-            if line.startswith(ch):
-                sig.emit(line[1:])
-                if esig is not None:
-                    elems = [v.strip() for v in line[1:].split(self.DELIMITER) \
-                                if len(v.strip()) > 0]
-                    for elem in elems:
-                        esig.emit(elem)
+        with self.transact:
+            self.messageReceived.emit(line)
+            self._handle_for(line, self.DEBUG,  self.debugMessageReceived,  None)
+            self._handle_for(line, self.INFO,   self.infoMessageReceived,   None)
+            self._handle_for(line, self.CONFIG, self.configMessageReceived, self.configElementReceived)
+            self._handle_for(line, self.RESULT, self.resultMessageReceived, self.resultElementReceived)
+            self._handle_for(line, self.ERROR,  self.errorMessageReceived,  None)
+            self._handle_for(line, self.OUTPUT, self.outputMessageReceived, None)
 
 #    def message(self, line):
 #        """re-implementing eventhandler's `message`"""
