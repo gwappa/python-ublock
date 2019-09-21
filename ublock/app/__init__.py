@@ -7,6 +7,7 @@ except ImportError:
 import sys
 from datetime import datetime
 from collections import OrderedDict
+from ..core import protocol
 
 _mainapp = None
 
@@ -14,16 +15,19 @@ _mainapp = None
 # to be removed some time in the future
 loglevel = 'fine'
 
+def _baselog(msg, end='\n'):
+    print(msg, end=end, file=sys.stderr, flush=True)
+
 def _debug(msg, end='\n'):
     if loglevel == 'debug':
-        print(msg, end=end, file=sys.stderr, flush=True)
+        _baselog(msg, end=end)
 
 def _fine(msg, end='\n'):
     if loglevel in ('debug', 'fine'):
-        print(msg, end=end, file=sys.stderr, flush=True)
+        _baselog(msg, end=end)
 
-def _warn(msg, end='\n'):
-    print(msg, end=end, file=sys.stderr, flush=True)
+_info = _baselog
+_warn = _baselog
 
 def getApp():
     global _mainapp
@@ -270,9 +274,9 @@ class LoggerUI(QtWidgets.QGroupBox):
 
     def logStatusChange(self, value):
         if value == True:
-            print("{}opened: {}".format(protocol.OUTPUT, self.fileinfo))
+            _info(f"{protocol.OUTPUT}opened: {self.fileinfo}")
         else:
-            print("{}no log file is attached".format(protocol.OUTPUT))
+            _info(f"{protocol.OUTPUT}log file detached")
 
     def log(self, line):
         """writes a line to the log file.
@@ -280,7 +284,7 @@ class LoggerUI(QtWidgets.QGroupBox):
         if self.logfile is not None:
             print(line, file=self.logfile, flush=True)
         else:
-            print("{}no log file is open".format(protocol.ERROR), flush=True)
+            _warn("***no log file is open")
 
 class TaskWidget(QtWidgets.QWidget):
     """a widget that is used to control the task.
