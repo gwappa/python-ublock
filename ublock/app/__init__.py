@@ -427,7 +427,7 @@ class TaskWidget(QtWidgets.QWidget):
 
         # configure results
         widget._results     = ResultParser.build(model, serial=widget._serialUI, output=True)
-        widget._statsUI     = ResultStatsUI.build(model, results=widget._results)
+        widget._statsUI     = ResultStatsUI.build(model, serial=widget._serialUI, results=widget._results)
         widget._sessionView = SessionView.build(model, results=widget._results)
 
         # add loggerUI

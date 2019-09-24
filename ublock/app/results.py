@@ -93,9 +93,12 @@ class ResultParser(QtCore.QObject):
 
 class ResultStatsUI(QtWidgets.QGroupBox):
     """a display widget for summarizing the result status"""
+    sweepStarted = QtCore.pyqtSignal(int)
+    sweepEnded   = QtCore.pyqtSignal()
+    sweepAborted = QtCore.pyqtSignal()
 
     @classmethod
-    def build(cls, model, results=None):
+    def build(cls, model, serial=None, results=None):
         mres = model.results
         if mres is None:
             return None
@@ -108,6 +111,8 @@ class ResultStatsUI(QtWidgets.QGroupBox):
         ui = cls(summarized=counted, rewarded=rewarded)
         if results is not None:
             ui.setResultParser(results)
+        if serial is not None:
+            ui.setSerialIO(serial)
         return ui
 
     def __init__(self, summarized=(), rewarded=(), parent=None):
@@ -116,25 +121,34 @@ class ResultStatsUI(QtWidgets.QGroupBox):
         QtWidgets.QGroupBox.__init__(self, "Result statistics", parent=parent)
         self.summarized     = list(summarized)
         self.rewarded       = list(rewarded)
+        self.sweepLabel     = '(sweep)'
+        self.sumLabel       = '(result)'
         self.rewardLabel    = '(reward)'
         self.fields         = OrderedDict()
         self.clearButton    = QtWidgets.QPushButton("Clear")
         self.clearButton.clicked.connect(self.clearCounts)
 
         self.layout     = QtWidgets.QGridLayout()
-        status = self.rewardLabel
-        self.layout.addWidget(QtWidgets.QLabel(status), 0, 0)
-        self.fields[status] = QtWidgets.QLabel("0")
-        self.layout.addWidget(self.fields[status], 1, 0)
-        for i, status in enumerate(self.summarized):
-            self.layout.addWidget(QtWidgets.QLabel(status), 0, i+1)
+        offset = 0
+        for status in (self.sweepLabel, self.sumLabel, self.rewardLabel):
+            self.layout.addWidget(QtWidgets.QLabel(status), 0, offset)
             self.fields[status] = QtWidgets.QLabel("0")
-            self.layout.addWidget(self.fields[status], 1, i+1)
-        self.layout.addWidget(self.clearButton, 1, len(self.summarized)+1)
+            self.layout.addWidget(self.fields[status], 1, offset)
+            offset += 1
+        for status in self.summarized:
+            self.layout.addWidget(QtWidgets.QLabel(status), 0, offset)
+            self.fields[status] = QtWidgets.QLabel("0")
+            self.layout.addWidget(self.fields[status], 1, offset)
+            offset += 1
+        self.layout.addWidget(self.clearButton, 1, offset)
         self.setLayout(self.layout)
 
     def setResultParser(self, parser):
         parser.resultStatusReceived.connect(self.addStatus)
+
+    def setSerialIO(self, serial):
+        serial.requestStatusChanged.connect(self.addSweep)
+        serial.requestAbandoned.connect(self.notifyAbort)
 
     def clearCounts(self):
         for field in self.fields.values():
@@ -144,8 +158,19 @@ class ResultStatsUI(QtWidgets.QGroupBox):
         prev = int(field.text())
         field.setText(str(prev+1))
 
+    def addSweep(self, inc):
+        if inc == True:
+            field = self.fields[self.sweepLabel]
+            self.__incrementField(field)
+            self.sweepStarted.emit(int(field.text()))
+
     def addStatus(self, status):
+        self.sweepEnded.emit()
+        self.__incrementField(self.fields[self.sumLabel])
         if status in self.summarized:
             self.__incrementField(self.fields[status])
         if status in self.rewarded:
             self.__incrementField(self.fields[self.rewardLabel])
+
+    def notifyAbort(self):
+        self.sweepAborted.emit()

@@ -36,6 +36,9 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
     serialClosed        = QtCore.pyqtSignal()
     serialStatusChanged = QtCore.pyqtSignal(bool)
 
+    requestStatusChanged    = QtCore.pyqtSignal(bool)
+    requestAbandoned        = QtCore.pyqtSignal()
+
     messageReceived         = QtCore.pyqtSignal(str)
     debugMessageReceived    = QtCore.pyqtSignal(str)
     infoMessageReceived     = QtCore.pyqtSignal(str)
@@ -58,23 +61,17 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         self.portEnumerator = QtWidgets.QComboBox()
         self.enumeratePorts()
         self.portEnumerator.currentIndexChanged.connect(self.updateSelection)
+        self.resultMessageReceived.connect(self.updateWithResults)
         self.label = QtWidgets.QLabel(label)
         self.connector = ConnectorButton(self)
-
-        #        self.serialclient   = serialclient  # the "function" that is used to open serial port
-        #        self.clientkw       = kwargs   # the arguments used to call "handler"
-        #        self.clientkw['handler'] = self if handler is None else handler
-        #
-        #        self.acqByResp  = acqByResp
-        #        self.io     = None
-        #        self.reader = None
         self.clienttype = clienttype
         if clienttype == 'leonardo':
             self.initial = initialCommand
-        self.term       = None
-        self.routine    = None
-        self.active     = False     # whether or not this IO is "connected"
-        self.transact   = Lock()
+        self.term        = None
+        self.routine     = None
+        self.active      = False     # whether or not this IO is "connected"
+        self.transact    = Lock()
+        self._in_request = False
 
         layout = QtWidgets.QHBoxLayout()
         self.setLayout(layout)
@@ -87,12 +84,17 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
             super().__setattr__("_active", value)
             self.portEnumerator.setEnabled(not value)
             self.serialStatusChanged.emit(value)
+        elif name == 'in_request':
+            super().__setattr__("_in_request", value)
+            self.requestStatusChanged.emit(value)
         else:
             super().__setattr__(name, value)
 
     def __getattr__(self, name):
         if name == 'active':
             return self._active
+        elif name == 'in_request':
+            return self._in_request
         else:
             return super().__getattr__(name)
 
@@ -104,6 +106,9 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
     def closePort(self):
         _debug("...closePort()")
         if self.routine is not None:
+            if self._in_request == True:
+                self._in_request = False
+                self.requestAbandoned.emit()
             self.routine.stop()
             self.routine = None
             self.term    = None
@@ -157,6 +162,10 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
         else:
             self.closePort()
 
+    def requestAction(self, line):
+        self.in_request = True
+        self.request(line)
+
     def request(self, line):
         """sends a line of command (not having the newline character(s))
         through the serial port."""
@@ -178,6 +187,10 @@ class SerialIO(QtWidgets.QWidget, EventHandler, protocol):
             return True
         else:
             return False
+
+    def updateWithResults(self, line):
+        if self._in_request == True:
+            self.in_request = False
 
     def handle(self, line):
         """re-implementing EventHandler's `received`"""

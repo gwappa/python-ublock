@@ -62,24 +62,31 @@ class ActionRunner(QtWidgets.QPushButton):
         output: whether or not to connect update events to SerialIO.
         """
         if output == True:
-            self.activated.connect(serial.request)
+            self.activated.connect(serial.requestAction)
         if self.returns is not None:
             if self.returns == 'result':
                 serial.resultMessageReceived.connect(self.checkResults)
+                serial.requestStatusChanged.connect(self.updateWithRequestStatus)
+                serial.requestAbandoned.connect(self.re_enable)
             elif self.returns == 'config':
                 serial.configMessageReceived.connect(self.checkResults)
         serial.serialStatusChanged.connect(self.setEnabled)
 
+    def updateWithRequestStatus(self, value):
+        self.setEnabled(not value)
+
+    def re_enable(self):
+        self.setEnabled(True)
+
     def dispatchCommand(self):
         self.activated.emit(self.command)
         self.waiting = True
-        self.setEnabled(False)
 
     def checkResults(self, msg):
         if self.evaluate(msg) == True:
             if self.waiting == True:
                 self.waiting = False
-                self.setEnabled(True)
+        self.setEnabled(True)
 
     def evaluate(self, result):
         return True
