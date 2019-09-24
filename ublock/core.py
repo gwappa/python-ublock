@@ -53,13 +53,11 @@ class Action(Command):
     """a class that represents the task action."""
 
     def __init__(self, name, command, label=None, desc=None,
-                 repeats=True, returns='result', criteria=None,
-                 strict=None):
+                 repeats=True, returns='result', strict_criteria=()):
         super().__init__(name, command, label=label, desc=desc)
-        self.returns    = returns
-        self.repeats    = bool(repeats)
-        self.criteria   = criteria
-        self.strict     = strict
+        self.returns         = returns
+        self.repeats         = bool(repeats)
+        self.strict_criteria = strict_criteria
 
 class Results:
     """a class that is used inside the Model instance
@@ -162,37 +160,12 @@ class ValuePlot(ResultPlot):
             super().__setattr__('markersize', value)
         else:
             super().__setattr__(name, value)
-#
-# class Responder:
-#     """the base class for those that respond to messages from the serial line."""
-#     def __init__(self, name, category=protocol.ALL):
-#         self.name     = name
-#         if isinstance(category, str):
-#             self.category = (category,)
-#         else:
-#             self.category = tuple(category)
 
 class Logger:
     def __init__(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
         self.name   = name
         self.label  = label
         self.fmt    = fmt
-
-# class Feature:
-#     """"the class that represents an extra feature on the interface."""
-#     def __init__(self, label='', desc=''):
-#         self.label = label
-#         self.desc  = desc
-#
-# class RawInput(Feature):
-#     """the class that represents the raw-input UI."""
-#     def __init__(self, label="Command", desc="raw command input"):
-#         super().__init__(self, label, desc)
-#
-# class RunningNote(Feature):
-#     """"the class that represents the running-note UI."""
-#     def __init__(self, label="Running note", desc="running note"):
-#         super().__init__(self, label, desc)
 
 def _checked_add(cmd, namedict, commands, label='item', task='task'):
     if cmd.name in namedict.keys():
