@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from pyqtgraph.Qt import QtWidgets, QtCore
+from ..core import protocol
 
 class RawCommandUI(QtWidgets.QWidget):
     """a widget class that provides functionality to send
