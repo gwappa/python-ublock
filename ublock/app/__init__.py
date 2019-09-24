@@ -339,7 +339,7 @@ class TaskWidget(QtWidgets.QWidget):
         self.status.setText(line)
 
     def quitApplication(self):
-        __mainapp.quit()
+        getApp().quit()
 
     def __layout(self):
         """lays out its components in a new QVBoxLayout."""
@@ -380,20 +380,25 @@ class TaskWidget(QtWidgets.QWidget):
                 box.setLayout(boxLayout)
                 layout.addWidget(box)
 
-        # format "surroundings"
-        surrounding = QtWidgets.QGridLayout()
-        surrounding.addLayout(layout, 0, 0)
-        ncol = 1
+        # add controls
+        __add(self._controls, separate=False)
 
-        # add sessionview (if any)
-        if self._sessionView is not None:
-            ncol = 2
-            surrounding.addWidget(self._sessionView, 0, 1)
-            surrounding.setColumnStretch(1, 2)
+        self.setLayout(layout)
 
-        if self._controls is not None:
-            surrounding.addLayout(self._controls, 1, 0, 1, 2)
-        self.setLayout(surrounding)
+        # # format "surroundings"
+        # surrounding = QtWidgets.QGridLayout()
+        # surrounding.addLayout(layout, 0, 0)
+        # ncol = 1
+        #
+        # # add sessionview (if any)
+        # if self._sessionView is not None:
+        #     ncol = 2
+        #     surrounding.addWidget(self._sessionView, 0, 1)
+        #     surrounding.setColumnStretch(1, 2)
+        #
+        # if self._controls is not None:
+        #     surrounding.addLayout(self._controls, 1, 0, 1, 2)
+        # self.setLayout(surrounding)
 
     @staticmethod
     def fromTask(model, clienttype='leonardo', baud=9600):

@@ -86,7 +86,7 @@ class NoteUI(QtWidgets.QGroupBox):
 
 class ControlUI(QtWidgets.QWidget):
     quitRequested  = QtCore.pyqtSignal()
-    clearRequested = QtCore.pyqtSignal()
+    # clearRequested = QtCore.pyqtSignal()
 
     @classmethod
     def build(cls, model, widget=None):
@@ -94,31 +94,32 @@ class ControlUI(QtWidgets.QWidget):
             ui = cls()
             if widget is not None:
                 ui.quitRequested.connect(widget.quitApplication)
+            return ui
         else:
             return None
 
     def __init__(self, parent=None):
         super(QtWidgets.QWidget, self).__init__(parent=parent)
-        self.clearButton = QtWidgets.QPushButton("Clear plots")
-        self.clearButton.setEnabled(False)
-        self.clearButton.clicked.connect(self.promptClear)
+        # self.clearButton = QtWidgets.QPushButton("Clear plots")
+        # self.clearButton.setEnabled(False)
+        # self.clearButton.clicked.connect(self.promptClear)
         self.quitButton  = QtWidgets.QPushButton("Quit")
         self.quitButton.clicked.connect(self.promptQuit)
 
         self.__layout     = QtWidgets.QHBoxLayout()
         self.setLayout(self.__layout)
         self.__layout.addStretch()
-        self.__layout.addWidget(self.clearButton)
+        # self.__layout.addWidget(self.clearButton)
         self.__layout.addWidget(self.quitButton)
 
-    def promptClear(self):
-        ret = QtWidgets.QMessageBox.warning(self,
-                                            "Clear plots",
-                                            "Are you sure you want to clear the session view?",
-                                            QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Yes,
-                                            QtWidgets.QMessageBox.Yes)
-        if ret == QtWidgets.QMessageBox.Yes:
-            self.clearRequested.emit()
+    # def promptClear(self):
+    #     ret = QtWidgets.QMessageBox.warning(self,
+    #                                         "Clear plots",
+    #                                         "Are you sure you want to clear the session view?",
+    #                                         QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Yes,
+    #                                         QtWidgets.QMessageBox.Yes)
+    #     if ret == QtWidgets.QMessageBox.Yes:
+    #         self.clearRequested.emit()
 
 
     def promptQuit(self):
