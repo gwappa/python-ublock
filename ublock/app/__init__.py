@@ -315,7 +315,7 @@ class TaskWidget(QtWidgets.QWidget):
             return self._modeUI.selector
         elif name == 'configs':
             return self._configUI
-        elif name == 'actions':
+        elif name == 'commands':
             return self._actionUI
         elif name == 'note':
             return self._noteUI

@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from _threading import Thread, Lock
+from threading import Thread, Lock
 from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
 
 class ActionUI(QtWidgets.QWidget):
@@ -42,11 +42,6 @@ class ActionRunner(QtWidgets.QPushButton):
             print("*unknown return type for {}: {}".format(label, returns))
             returns = None
         self.returns = returns
-        if criteria is not None:
-            if callable(criteria):
-                self.evaluate = criteria
-            else:
-                print(f"***criteria '{criteria}' is not callable and hence disabled. try using ublock.testResult()", flush=True)
 
         self.label = label
         self.waiting = False
