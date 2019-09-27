@@ -7,7 +7,7 @@ except ImportError:
 import sys
 from datetime import datetime
 from collections import OrderedDict
-from ..core import protocol
+from ..core import protocol, DEFAULT_LOGGER_FORMAT
 
 _mainapp = None
 
@@ -198,7 +198,7 @@ class LoggerUI(QtWidgets.QGroupBox):
         return loggers
 
     @classmethod
-    def get(cls, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log"):
+    def get(cls, name, label=None, fmt=DEFAULT_LOGGER_FORMAT):
         """used for sharing the log file."""
         if name not in cls.loggers.keys():
             cls.loggers[name] = cls(name, label=label, fmt=fmt)
@@ -210,7 +210,7 @@ class LoggerUI(QtWidgets.QGroupBox):
         from the device show up on the standard output."""
         print(line, flush=True)
 
-    def __init__(self, name, label=None, fmt="{}_%Y-%m-%d_%H%M%S.log", parent=None):
+    def __init__(self, name, label=None, fmt=DEFAULT_LOGGER_FORMAT, parent=None):
         if label is None:
             label = "'{}' log file".format(name)
         QtWidgets.QGroupBox.__init__(self, label, parent=parent)

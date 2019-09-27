@@ -1,3 +1,3 @@
 from .core import *
 
-VERSION_STR = "0.2.5"
+VERSION_STR = "0.2.6"
