@@ -257,14 +257,14 @@ class LoggerUI(QtWidgets.QGroupBox):
         fmt = self.field.text().strip()
         if len(fmt) == 0:
             fmt = self.baseformat
-        elif not fmt[-4:] in (".txt", ".log"):
-            fmt += ".log"
+        elif not any(fmt.endswith(suf) for suf in (".txt", ".log", ".ulog")):
+            fmt += ".ulog"
         now     = datetime.now()
         newname = now.strftime(fmt)
         self.fileinfo = QtWidgets.QFileDialog.getSaveFileName(self,
                             "New log file...",
                             newname,
-                            "Log file (*.txt, *.log)")
+                            "Log file (*.txt, *.log, *.ulog)")
         if len(self.fileinfo[0]) == 0:
             self.statusChanged.emit(False)
         else:

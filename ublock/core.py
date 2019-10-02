@@ -161,7 +161,7 @@ class ValuePlot(ResultPlot):
         else:
             super().__setattr__(name, value)
 
-DEFAULT_LOGGER_FORMAT = "{}_%Y-%m-%d_session001_%H-%M-%S.log"
+DEFAULT_LOGGER_FORMAT = "{}_ses%Y-%m-%d-001_run%H-%M-%S.ulog"
 
 class Logger:
     def __init__(self, name, label=None, fmt=DEFAULT_LOGGER_FORMAT):
